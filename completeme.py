@@ -43,7 +43,7 @@ def compute_eligible_filenames(input_str, all_filenames):
 
     eligible_filenames = filter(lambda x: regex.search(x),
                                 all_filenames)
-    # TODO sort by those that match on a word boudary
+    # TODO sort by those that match on a word boundary
     return eligible_filenames
 
 def display_filenames(screen, all_filenames):
