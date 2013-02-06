@@ -34,17 +34,23 @@ def get_filenames():
     return map(lambda fn: fn[len("./"):] if fn.startswith("./") else fn,
                all_fns.strip().split("\n"))
 
+ELIGIBLE_FILENAMES_CACHE = {}
 def compute_eligible_filenames(input_str, all_filenames):
     """ Return a sorted ordering of the filenames based on this input string.
 
     All filenames that match the input_string are included, and we prefer those
     that match on word boundaries. """
-    regex = re.compile(input_str, re.IGNORECASE)
 
-    eligible_filenames = filter(lambda x: regex.search(x),
-                                all_filenames)
-    # TODO sort by those that match on a word boundary
-    return eligible_filenames
+    lowered = input_str.lower()
+    if lowered not in ELIGIBLE_FILENAMES_CACHE:
+        regex = re.compile(lowered, re.IGNORECASE)
+
+        eligible_filenames = filter(lambda x: regex.search(x),
+                                    all_filenames)
+        # TODO sort by those that match on a word boundary
+        ELIGIBLE_FILENAMES_CACHE[lowered] = eligible_filenames
+
+    return ELIGIBLE_FILENAMES_CACHE[lowered]
 
 def display_filenames(screen, all_filenames):
     input_str = ""
