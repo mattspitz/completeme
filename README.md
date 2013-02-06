@@ -1,7 +1,7 @@
 # completeme
 
 ## Description
-This is a python script that'll allow you to auto-complete files, much like GitHub's 't' keyboard shortcut.  Rather than tab-completing to oblivion (ever worked on a Java project?), just start typing the name of the file.  Uses files stored in the current GitHub repository and falls back on all files below the current working directory.
+This is a python script that'll allow you to auto-complete filenames and launch them in an editor, much like GitHub's 't' keyboard shortcut.  Rather than tab-completing to oblivion (ever worked on a Java project?), just start typing the name of the file, and when you hit enter, it'll open that file in your favorite $EDITOR.  Uses files stored in the current GitHub repository and falls back on all files below the current working directory.
 
 If you add the line in bashrc\_inc to your bashrc, it'll bind Ctrl+t to this script.
 
