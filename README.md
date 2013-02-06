@@ -9,7 +9,6 @@ If you add the line in bashrc\_inc to your bashrc, it'll bind Ctrl+t to this scr
 This software is licensed under the WtHYWv2 (Whatever the Hell You Want, v2).  Please throw some credit around if it's deserved.
 
 ## Known issues
-* Actually launch the $EDITOR
 * Write an install setup.py (and deploy to PyPI) so we can use a global command in bashrc\_inc.  The current one only works if you're in the same directory as completeme.py.  Boring.
 * Currently, the git search (ls-tree) lists only the files under source control at or beneath this directory.  Do we want to support querying all files in the git repository, regardless of which subdirectory you're in?
 * Come up with some way to sort the results to prioritize the better matches, perhaps by word boundary.
