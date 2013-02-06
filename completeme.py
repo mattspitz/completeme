@@ -112,7 +112,6 @@ def open_file(fn):
     print fn
 
 def main():
-
     filenames = get_filenames()
     selected_fn = None
     try:
