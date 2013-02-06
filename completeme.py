@@ -59,7 +59,7 @@ def display_filenames(screen, all_filenames):
         screen.clear()
 
         INPUT_Y = 1   # where the input line should go
-        FN_OFFSET = 2 # first x coordinate of a file
+        FN_OFFSET = 2 # first Y coordinate of a filename
         max_height, max_width = screen.getmaxyx()
         max_files_to_show = min(len(eligible_filenames), max_height - FN_OFFSET)
 
