@@ -1,4 +1,5 @@
 import curses
+import os
 import re
 import subprocess
 
@@ -107,9 +108,11 @@ def display_filenames(screen, all_filenames):
     return highlighted_fn
 
 def open_file(fn):
-    # TODO run with EDITOR
-    # TODO add command to history (history -s cmd)
-    print fn
+    editor_cmd = os.getenv("EDITOR")
+    if editor_cmd is None:
+        raise Exception("Environment variable $EDITOR is missing!")
+
+    subprocess.call([ editor_cmd, fn ])
 
 def main():
     filenames = get_filenames()
