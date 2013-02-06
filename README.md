@@ -15,4 +15,4 @@ This software is licensed under the WtHYWv2 (Whatever the Hell You Want, v2).  P
 
 ## Wishlist
 * I wish I didn't have to run the $EDITOR command in the script.  Wouldn't it be neat if Ctrl+t could just output the filename into my current prompt?  Then, you can autocomplete, for anything, not just your text editor.
-* It'd also be neat to specify a different directory that you'd like to autocomplete, not just the current working directory.
+* It'd also be neat to specify a different directory that you'd like to autocomplete, not just the current working directory, though perhaps that's beyond the scope of this project.
