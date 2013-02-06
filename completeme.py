@@ -1,3 +1,5 @@
+#!/usr/bin/env python2.7
+
 import curses
 import os
 import re
