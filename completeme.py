@@ -51,6 +51,8 @@ def display_filenames(screen, all_filenames):
     key_name = None
 
     while key_name != NEWLINE:
+        highlighted_fn = eligible_filenames[highlighted_pos] if eligible_filenames else None
+
         screen.clear()
 
         INPUT_Y = 1   # where the input line should go
@@ -101,8 +103,6 @@ def display_filenames(screen, all_filenames):
 
             # ...and reset highlighted_pos
             highlighted_pos = 0
-
-        highlighted_fn = eligible_filenames[highlighted_pos] if eligible_filenames else None
 
     return highlighted_fn
 
