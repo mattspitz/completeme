@@ -1,1 +1,0 @@
-bind -x '"\C-t": python completeme.py'

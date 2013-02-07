@@ -3,7 +3,7 @@
 ## Description
 This is a python script that'll allow you to auto-complete filenames and launch them in an editor, much like GitHub's 't' keyboard shortcut.  Rather than tab-completing to oblivion (ever worked on a Java project?), just start typing the name of the file, and when you hit enter, it'll open that file in your favorite $EDITOR.  Uses files stored in the current GitHub repository and falls back on all files below the current working directory.
 
-If you add the line in bashrc\_inc to your bashrc, it'll bind Ctrl+t to this script.
+Make sure to add `source setup_completeme_keybinding.sh` (wherever it gets installed) to your .bashrc to enable Ctrl+t support!
 
 ## License
 This software is licensed under the WtHYWv2 (Whatever the Hell You Want, v2).  Please throw some credit around if it's deserved.
