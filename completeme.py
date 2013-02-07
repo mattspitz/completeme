@@ -43,13 +43,17 @@ def compute_eligible_filenames(input_str, all_filenames):
 
     lowered = input_str.lower()
     if lowered not in ELIGIBLE_FILENAMES_CACHE:
+        # if this query is at least two characters long and the prefix minus this last letter has already been computed, start with those eligible filenames
+        # no need to prune down the whole list if we've already limited the search space
+        initial_filenames = ELIGIBLE_FILENAMES_CACHE.get(lowered[:-1], all_filenames) if len(lowered) >= 2 else all_filenames
+
         # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
         regex = re.compile("(.*?)".join(lowered), re.IGNORECASE | re.DOTALL)
 
         # we use filter rather than a list comprehension to avoid computing
         # re.search() more than once per filename
         matches = filter(lambda match: match is not None,
-                         ( regex.search(fn) for fn in all_filenames ))
+                         ( regex.search(fn) for fn in initial_filenames ))
 
         def match_cmp(match_one, match_two):
             # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)

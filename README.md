@@ -11,7 +11,6 @@ This software is licensed under the WtHYWv2 (Whatever the Hell You Want, v2).  P
 ## Known issues
 * Still needs an install setup.py (and deploy to PyPI) so we can use a global command in bashrc\_inc.  The current one only works if you're in the same directory as completeme.py.  Boring.
 * Currently, the git search (ls-tree) lists only the files under source control at or beneath this directory.  Do we want to support querying all files in the git repository, regardless of which subdirectory you're in?  If so, we'll want to use the --full-tree option.
-* We should be computing incremental eligible filenames only as a subset of the previous set.  For example, "Hello" should only search the candidates that matched "Hell", not all possible filenames.
 
 ## Wishlist
 * I wish I didn't have to run the $EDITOR command in the script.  Wouldn't it be neat if Ctrl+t could just output the filename into my current prompt?  Then, you can autocomplete for anything, not just your text editor.
