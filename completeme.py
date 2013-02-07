@@ -43,12 +43,35 @@ def compute_eligible_filenames(input_str, all_filenames):
 
     lowered = input_str.lower()
     if lowered not in ELIGIBLE_FILENAMES_CACHE:
-        regex = re.compile(lowered, re.IGNORECASE)
+        # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
+        regex = re.compile("(.*?)".join(lowered), re.IGNORECASE | re.DOTALL)
 
-        eligible_filenames = filter(lambda x: regex.search(x),
-                                    all_filenames)
-        # TODO sort by those that match on a word boundary
-        ELIGIBLE_FILENAMES_CACHE[lowered] = eligible_filenames
+        # we use filter rather than a list comprehension to avoid computing
+        # re.search() more than once per filename
+        matches = filter(lambda match: match is not None,
+                         ( regex.search(fn) for fn in all_filenames ))
+
+        def match_cmp(match_one, match_two):
+            # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
+            def nonempty_groups(match):
+                return filter(lambda x: x,
+                              match.groups())
+
+            one_groups, two_groups = nonempty_groups(match_one), nonempty_groups(match_two)
+
+            diff = len(one_groups) - len(two_groups) # (more nonempty groups -> show up later in the list)
+            if diff != 0:
+                return diff
+
+            # then the shortest total length of all groups (prefer "MyGreatFile.txt" over "My Documents/stuff/File.txt")
+            diff = len("".join(one_groups)) - len("".join(two_groups))
+            if diff != 0:
+                return diff
+
+            # and finally in lexicographical order
+            return cmp(match_one.string, match_two.string)
+
+        ELIGIBLE_FILENAMES_CACHE[lowered] = [ match.string for match in sorted(matches, cmp=match_cmp) ]
 
     return ELIGIBLE_FILENAMES_CACHE[lowered]
 
