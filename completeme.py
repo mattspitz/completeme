@@ -60,9 +60,10 @@ def display_filenames(screen, all_filenames):
     key_name = None
 
     while key_name != NEWLINE:
-        highlighted_fn = eligible_filenames[highlighted_pos] if eligible_filenames else None
-
         screen.clear()
+
+        eligible_filenames = compute_eligible_filenames(input_str, all_filenames)
+        highlighted_fn = eligible_filenames[highlighted_pos] if eligible_filenames else None
 
         INPUT_Y = 1   # where the input line should go
         FN_OFFSET = 2 # first Y coordinate of a filename
@@ -96,21 +97,17 @@ def display_filenames(screen, all_filenames):
         elif key_name == "KEY_PPAGE": # page up
             highlighted_pos = 0
         else:
-            if key_name == "KEY_BACKSPACE":   # delete single character
+            if key_name in ["KEY_BACKSPACE", "^?"]:   # delete single character
                 input_str = input_str[:-1]
-            elif key_name == "^W":            # delete whole line
+            elif key_name == "^W":                    # delete whole line
                 input_str = ""
-            elif key_name.startswith("KEY_"): # just ignore it
+            elif (key_name.startswith("KEY_")
+                    or key_name.startswith("^")):     # just ignore it
                 continue
-            else:                             # add character (doesn't special key checking)
+            else:                                     # add character (doesn't special key checking)
                 input_str += key_name
 
-            # at this point, input_str has changed
-
-            # ...recalculate eligible filenames
-            eligible_filenames = compute_eligible_filenames(input_str, all_filenames)
-
-            # ...and reset highlighted_pos
+            # at this point, input_str has changed, so reset the highlighted_pos
             highlighted_pos = 0
 
     return highlighted_fn
