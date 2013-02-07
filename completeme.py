@@ -28,7 +28,7 @@ def get_filenames():
         return git_fns.strip().split("\n")
 
     # fall back on all filenames below this directory
-    all_fns = subprocess.check_output("find -L -type f", shell=True, universal_newlines=True)
+    all_fns = subprocess.check_output("find -L . -type f", shell=True, universal_newlines=True)
 
     # strip off the leading ./ to match git output
     return map(lambda fn: fn[len("./"):] if fn.startswith("./") else fn,
