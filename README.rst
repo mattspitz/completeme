@@ -9,7 +9,7 @@ completeme is a python script that'll allow you to auto-complete filenames and l
 ############
 Known issues
 ############
-* Currently, the git search (ls-tree) lists only the files under source control at or beneath this directory.  Do we want to support querying all files in the git repository, regardless of which subdirectory you're in?  If so, we'll want to use the --full-tree option.  Related, this won't pick up new files in your git repository.
+* Currently, the git search (ls-tree) lists only the files under source control at or beneath this directory.  Do we want to support querying all files in the git repository, regardless of which subdirectory you're in?  If so, we'll want to use the --full-tree option.
 
 ########
 Wishlist
