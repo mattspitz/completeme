@@ -9,7 +9,7 @@ default:
 build_sdist:
 	bash check_build.sh
 
-	python setup.py sdist
+	python setup.py sdist upload
 
 	# bump version
 	python -c "curr = map(int, open('$(VERSION_FN)').read().split('.')); curr[-1] += 1; open('$(VERSION_FN)', 'w').write('.'.join(map(str,curr)))"
