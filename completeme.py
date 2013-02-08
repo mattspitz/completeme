@@ -21,18 +21,27 @@ def cleanup_curses():
     curses.echo()
     curses.endwin()
 
+def run_cmd(cmd, shell=False, check_returncode=False):
+    """ Run the command specified.  Returns (stdout, stderr).  Optionally checks returncode. """
+    popen = subprocess.Popen(cmd, shell=shell, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = popen.communicate()
+    if check_returncode and popen.returncode != 0:
+        raise Exception("{} returned return code {:d}.  Stderr:\n{}".format(cmd, popen.returncode, stderr))
+
+    return stdout, stderr
+
 def get_filenames():
     # first try to list all files under (git) source control
-    git_fns = subprocess.check_output("git ls-tree -r HEAD | cut -f2", shell=True, universal_newlines=True)
+    git_fns, _ = run_cmd("git ls-tree -r HEAD | cut -f2", shell=True, check_returncode=True)
     if git_fns:
         return git_fns.strip().split("\n")
 
     # fall back on all filenames below this directory
-    stdout, _ = subprocess.Popen("find -L . -type f", shell=True, universal_newlines=True, stdout=subprocess.PIPE).communicate()
+    all_fns, _ = run_cmd("find -L . -type f", shell=True)
 
     # strip off the leading ./ to match git output
     return map(lambda fn: fn[len("./"):] if fn.startswith("./") else fn,
-               stdout.strip().split("\n"))
+               all_fns.strip().split("\n"))
 
 ELIGIBLE_FILENAMES_CACHE = {}
 def compute_eligible_filenames(input_str, all_filenames):
