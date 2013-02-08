@@ -31,19 +31,22 @@ def run_cmd(cmd, shell=False, check_returncode=False):
     return stdout, stderr
 
 def get_filenames():
+    def fns_from_stdout(stdout):
+        return filter(lambda x: x, stdout.strip().split("\n"))
+
     # first try to list all files under (git) source control
     git_fns, _ = run_cmd("git ls-tree -r HEAD | cut -f2", shell=True, check_returncode=True)
     if git_fns:
         # also pull in untracked (but not .gitignore'd) files
         untracked_fns, _ = run_cmd("git ls-files --exclude-standard --others | cut -f2", shell=True, check_returncode=True)
-        return git_fns.strip().split("\n") + untracked_fns.strip().split("\n")
+        return fns_from_stdout(git_fns) + fns_from_stdout(untracked_fns)
 
     # fall back on all filenames below this directory
     all_fns, _ = run_cmd("find -L . -type f", shell=True)
 
     # strip off the leading ./ to match git output
     return map(lambda fn: fn[len("./"):] if fn.startswith("./") else fn,
-               all_fns.strip().split("\n"))
+               fns_from_stdout(all_fns))
 
 ELIGIBLE_FILENAMES_CACHE = {}
 def compute_eligible_filenames(input_str, all_filenames):
