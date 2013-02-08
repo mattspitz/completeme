@@ -28,11 +28,11 @@ def get_filenames():
         return git_fns.strip().split("\n")
 
     # fall back on all filenames below this directory
-    all_fns = subprocess.check_output("find -L . -type f", shell=True, universal_newlines=True)
+    stdout, _ = subprocess.Popen("find -L . -type f", shell=True, universal_newlines=True, stdout=subprocess.PIPE).communicate()
 
     # strip off the leading ./ to match git output
     return map(lambda fn: fn[len("./"):] if fn.startswith("./") else fn,
-               all_fns.strip().split("\n"))
+               stdout.strip().split("\n"))
 
 ELIGIBLE_FILENAMES_CACHE = {}
 def compute_eligible_filenames(input_str, all_filenames):
