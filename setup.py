@@ -6,7 +6,7 @@ setup(
         name = "completeme",
         version = open("VERSION").read().strip(),
         description = "Automagic ctrl+t filename completion to launch in your favorite editor",
-        long_description = open("README.md").read(),
+        long_description = open("README.rst").read(),
         author = "Matt Spitz",
         url = "https://github.com/mattspitz/completeme",
 
