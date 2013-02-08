@@ -34,7 +34,9 @@ def get_filenames():
     # first try to list all files under (git) source control
     git_fns, _ = run_cmd("git ls-tree -r HEAD | cut -f2", shell=True, check_returncode=True)
     if git_fns:
-        return git_fns.strip().split("\n")
+        # also pull in untracked (but not .gitignore'd) files
+        untracked_fns, _ = run_cmd("git ls-files --exclude-standard --others | cut -f2", shell=True, check_returncode=True)
+        return git_fns.strip().split("\n") + untracked_fns.strip().split("\n")
 
     # fall back on all filenames below this directory
     all_fns, _ = run_cmd("find -L . -type f", shell=True)
