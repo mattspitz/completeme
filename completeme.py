@@ -111,7 +111,11 @@ def display_filenames(screen, all_filenames):
 
         # put the cursor at the end of the string
         input_x = min(len(input_str), max_width - 1)
-        key_name = curses.keyname(screen.getch(INPUT_Y, input_x))
+        try:
+            key_name = curses.keyname(screen.getch(INPUT_Y, input_x))
+        except KeyboardInterrupt:
+            # swallow ctrl+c
+            return None
 
         if key_name == NEWLINE:
             continue
