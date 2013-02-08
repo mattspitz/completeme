@@ -116,7 +116,7 @@ def display_filenames(screen, all_filenames):
 
         for pos, fn in enumerate(eligible_filenames[:max_files_to_show]):
             attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if pos == highlighted_pos else curses.A_NORMAL
-            screen.addstr(FN_OFFSET + pos, 0, fn, attr)
+            screen.addstr(FN_OFFSET + pos, 0, fn[-(max_width - 1):], attr)
 
         screen.refresh()
 
