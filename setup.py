@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 
 from setuptools import setup
-from completeme import __version__
 
 setup(
         name = "completeme",
-        version = __version__,
+        version = open("VERSION").read().strip(),
         description = "Automagic ctrl+t filename completion to launch in your favorite editor",
         long_description = open("README.rst").read(),
         author = "Matt Spitz",
