@@ -8,6 +8,7 @@ setup(
         description = "Automagic ctrl+t filename completion to launch in your favorite editor",
         long_description = open("README.rst").read(),
         author = "Matt Spitz",
+        author_email = "mattspitz@gmail.com",
         url = "https://github.com/mattspitz/completeme",
 
         py_modules = ["completeme"],
