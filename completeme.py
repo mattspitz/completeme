@@ -12,7 +12,7 @@ import pkg_resources
 
 CONFIG_FN = pkg_resources.resource_filename(__name__, "conf/completeme.json")
 def get_config(key, default="NO_DEFAULT"):
-    """ Returns the value for the config key, loading first from the working directory and then the basic install point.  Can be overriden with CONFIG_FN environment variable. """
+    """ Returns the value for the config key, loading first from the working directory and then the basic install point.  Can be overridden with CONFIG_FN environment variable. """
 
     def load_config():
         CONFIG_CACHE_KEY = "cached_config"
