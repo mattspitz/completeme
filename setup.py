@@ -2,8 +2,6 @@
 
 from setuptools import setup
 
-import completeme
-data_files = [("/etc", [completeme.CONFIG_FN])]
 setup(
         name = "completeme",
         version = open("VERSION").read().strip(),
@@ -20,5 +18,5 @@ setup(
                 ]
             },
         scripts = ["setup_completeme_key_binding.sh"],
-        data_files = data_files
+        data_files = [("/etc", ["conf/completeme.json"])] # /etc/completeme.json is referenced in completeme.py
 )
