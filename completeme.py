@@ -1,11 +1,39 @@
 #!/usr/bin/env python2.7
 
 import curses
+import json
 import os
 import re
 import subprocess
 
 """ Some of this is generously lifted from http://blog.skeltonnetworks.com/2010/03/python-curses-custom-menu/ """
+
+CONFIG_FN = "/etc/completeme.json"
+def get_config(key, default="NO_DEFAULT"):
+    """ Returns the value for the config key, loading first from the working directory and then the basic install point.  Can be overriden with CONFIG_FN environment variable. """
+
+    def load_config():
+        CONFIG_CACHE_KEY = "cached_config"
+        if hasattr(get_config, CONFIG_CACHE_KEY):
+            return getattr(get_config, CONFIG_CACHE_KEY)
+
+        base_fn = os.path.basename(CONFIG_FN)
+        fn_paths = [ os.path.join("conf", base_fn),
+                     CONFIG_FN ]
+        if "CONFIG_FN" in os.environ:
+            fn_paths.append(os.environ["CONFIG_FN"])
+
+        for fn in fn_paths:
+            try:
+                cfg = json.load(open(fn, "r"))
+                setattr(get_config, CONFIG_CACHE_KEY, cfg)
+                return cfg
+            except IOError:
+                pass
+
+        raise Exception("Couldn't load config from any of {}".format(fn_paths))
+
+    return load_config()[key] if default == "NO_DEFAULT" else load_config().get(key, default)
 
 HIGHLIGHT_COLOR_PAIR = 1
 NEWLINE = "^J"
@@ -35,14 +63,22 @@ def get_filenames():
         return filter(lambda x: x, stdout.strip().split("\n"))
 
     # first try to list all files under (git) source control
-    git_fns, _ = run_cmd("git ls-tree -r HEAD | cut -f2", shell=True, check_returncode=True)
+    git_cmd = "git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD"
+
+    git_fns, _ = run_cmd("{} | cut -f2".format(git_cmd), shell=True, check_returncode=True)
     if git_fns:
         # also pull in untracked (but not .gitignore'd) files
         untracked_fns, _ = run_cmd("git ls-files --exclude-standard --others | cut -f2", shell=True, check_returncode=True)
         return fns_from_stdout(git_fns) + fns_from_stdout(untracked_fns)
 
     # fall back on all filenames below this directory
-    all_fns, _ = run_cmd("find -L . -type f", shell=True)
+    find_cmd = "find -L . -type f"
+    if not get_config("find_hidden_directories"):
+        find_cmd = "{} {}".format(find_cmd, "-not -path '*/.*/*'")
+    if not get_config("find_hidden_files"):
+        find_cmd = "{} {}".format(find_cmd, "-not -name '.*'")
+
+    all_fns, _ = run_cmd(find_cmd, shell=True)
 
     # strip off the leading ./ to match git output
     return map(lambda fn: fn[len("./"):] if fn.startswith("./") else fn,
