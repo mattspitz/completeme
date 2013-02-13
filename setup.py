@@ -18,5 +18,5 @@ setup(
                 ]
             },
         scripts = ["setup_completeme_key_binding.sh"],
-        data_files = [("/etc", ["conf/completeme.json"])] # /etc/completeme.json is referenced in completeme.py
+        data_files = [("conf", ["conf/completeme.json"])]
 )

@@ -6,9 +6,11 @@ import os
 import re
 import subprocess
 
+import pkg_resources
+
 """ Some of this is generously lifted from http://blog.skeltonnetworks.com/2010/03/python-curses-custom-menu/ """
 
-CONFIG_FN = "/etc/completeme.json"
+CONFIG_FN = pkg_resources.resource_filename(pkg_resources.Requirement.parse("completeme"), "conf/completeme.json")
 def get_config(key, default="NO_DEFAULT"):
     """ Returns the value for the config key, loading first from the working directory and then the basic install point.  Can be overriden with CONFIG_FN environment variable. """
 
