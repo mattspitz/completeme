@@ -18,5 +18,6 @@ setup(
                 ]
             },
         scripts = ["setup_completeme_key_binding.sh"],
-        data_files = [("conf", ["conf/completeme.json"])]
+        data_files = [("conf", ["conf/completeme.json"])],
+        install_requires = ["setuptools"]
 )
