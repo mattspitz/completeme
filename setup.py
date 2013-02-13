@@ -11,13 +11,13 @@ setup(
         author_email = "mattspitz@gmail.com",
         url = "https://github.com/mattspitz/completeme",
 
-        py_modules = ["completeme"],
+        packages = ["completeme"],
+        package_data = {"completeme": ["conf/completeme.json"]},
         entry_points = {
             "console_scripts": [
                     "completeme = completeme:main"
                 ]
             },
         scripts = ["setup_completeme_key_binding.sh"],
-        data_files = [("conf", ["conf/completeme.json"])],
         install_requires = ["setuptools"]
 )
