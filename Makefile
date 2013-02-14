@@ -9,7 +9,8 @@ default:
 build_sdist:
 	bash check_build.sh
 
-	python setup.py sdist upload
+	# pipe to /dev/stderr so we can get the output, but preserve grep's exit status
+	python setup.py sdist upload 2>&1 | tee /dev/stderr | grep "Server response (200): OK"
 
 	# bump version
 	python -c "curr = map(int, open('$(VERSION_FN)').read().split('.')); curr[-1] += 1; open('$(VERSION_FN)', 'w').write('.'.join(map(str,curr)))"
