@@ -21,5 +21,8 @@ build_sdist:
 
 release: build_sdist clean
 
+test:
+	nosetests tests
+
 clean:
 	rm -rf build *.egg-info
