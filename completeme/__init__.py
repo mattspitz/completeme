@@ -100,7 +100,9 @@ def compute_eligible_filenames(input_str, all_filenames):
         initial_filenames = ELIGIBLE_FILENAMES_CACHE.get(lowered[:-1], all_filenames) if len(lowered) >= 2 else all_filenames
 
         # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
-        regex = re.compile("(.*?)".join(lowered), re.IGNORECASE | re.DOTALL)
+        # guard against user input that may be construed as a regex
+        regex_str = "(.*?)".join( re.escape(ch) for ch in lowered )
+        regex = re.compile(regex_str, re.IGNORECASE | re.DOTALL)
 
         # we use filter rather than a list comprehension to avoid computing
         # re.search() more than once per filename
