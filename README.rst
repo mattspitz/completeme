@@ -16,12 +16,6 @@ completeme comes with /etc/completeme.json, which you can use to, well, configur
 * *find_hidden_directories* (default=false) indicates whether we should search inside dot directories (assuming we didn't find a git repository).  These are things like .config/, .vim/, etc.
 * *find_hidden_files* (default=false) indicates whether we should find files that start with a dot (assuming we didn't find a git repository).  These are things like .emacs, .xinitrc, .DS_Store, etc.
 
-########
-Wishlist
-########
-* I wish I didn't have to run the $EDITOR command in the script.  Wouldn't it be neat if Ctrl+t could just output the filename into my current prompt?  Then, you can autocomplete for anything, not just your text editor.
-* It'd also be neat to specify a different directory that you'd like to autocomplete, not just the current working directory, though perhaps that's beyond the scope of this project.
-
 #######
 License
 #######
