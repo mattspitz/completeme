@@ -1,14 +1,22 @@
 #!/usr/bin/env python2.7
 
+import collections
+import copy
 import curses
+import itertools
 import json
+import logging
 import os
+import Queue
 import re
 import shlex
 import subprocess
 import sys
+import threading
 
 import pkg_resources
+
+_logger = None
 
 CONFIG_FN = pkg_resources.resource_filename(__name__, "conf/completeme.json")
 def get_config(key, default="NO_DEFAULT"):
@@ -54,57 +62,145 @@ def cleanup_curses():
     curses.echo()
     curses.endwin()
 
-def run_cmd(cmd, shell=False, check_returncode=False):
-    """ Run the command specified.  Returns (stdout, stderr).  Optionally checks returncode. """
-    popen = subprocess.Popen(cmd, shell=shell, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = popen.communicate()
-    if check_returncode and popen.returncode != 0:
-        raise Exception("{} returned return code {:d}.  Stderr:\n{}".format(cmd, popen.returncode, stderr))
+class CandidateComputationInterruptedException(Exception):
+    pass
 
-    return stdout, stderr
+CurrentFilenames = collections.namedtuple("CurrentFilenames", [ "candidates", "eligible", "candidate_computation_complete", "git_root_dir" ])
+class FilenameSearchThread(threading.Thread):
+    def __init__(self, initial_input_str):
+        super(FilenameSearchThread, self).__init__()
+        self.daemon = True
 
-def get_filenames():
-    def fns_from_stdout(stdout):
-        return filter(lambda x: x, stdout.strip().split("\n"))
+        self.interrupted = threading.Event()
+        self.input_str_queue = Queue.Queue()
+        self.state_lock = threading.Lock()            # for updating shared state
 
-    # first try to list all files under (git) source control
-    git_cmd = "git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD"
+        self.current_search_dir = None                # only re-run find/git if the search directory changes
+        self.candidate_computation_complete = False   # are we done getting all filenames for the current search directory?
+        self.candidate_fns_cache = {}                 # cache for candidate filenames given an input_str
+        self.eligible_fns_cache = {}                  # cache for eligible filenames given an input_str and a current_search_dir
+        self.candidate_fns = []                       # current set of candidate functions
+        self.git_root_dir = None                           # git root directory
 
-    git_fns, _ = run_cmd("{} | cut -f2".format(git_cmd), shell=True, check_returncode=True)
-    if git_fns:
-        # also pull in untracked (but not .gitignore'd) files
-        untracked_fns, _ = run_cmd("git ls-files --exclude-standard --others | cut -f2", shell=True, check_returncode=True)
-        return fns_from_stdout(git_fns) + fns_from_stdout(untracked_fns)
+        self.input_str = None
+        self.update_input_str(initial_input_str)
 
-    # fall back on all filenames below this directory
-    find_cmd = "find -L . -type f"
-    if not get_config("find_hidden_directories"):
-        find_cmd = "{} {}".format(find_cmd, "-not -path '*/.*/*'")
-    if not get_config("find_hidden_files"):
-        find_cmd = "{} {}".format(find_cmd, "-not -name '.*'")
+    def run(self):
+        while True:
+            next_input_str = self.input_str_queue.get()
+            with self.state_lock:
+                # clear out the queue in case we had multiple strings queued up
+                while not self.input_str_queue.empty():
+                    next_input_str = self.input_str_queue.get()
 
-    all_fns, _ = run_cmd(find_cmd, shell=True)
+                # allow ourselves to be interrupted again
+                self.interrupted.clear()
 
-    # strip off the leading ./ to match git output
-    return map(lambda fn: fn[len("./"):] if fn.startswith("./") else fn,
-               fns_from_stdout(all_fns))
+                # indicate that we're not done computing
+                self.candidate_computation_complete = False
 
-ELIGIBLE_FILENAMES_CACHE = {}
-def compute_eligible_filenames(input_str, all_filenames):
-    """ Return a sorted ordering of the filenames based on this input string.
+                # reset
+                self.candidate_fns = []
 
-    All filenames that match the input_string are included, and we prefer those
-    that match on word boundaries. """
+            try:
+                # don't use check_output because it won't swallow stdout
+                git_root_dir = subprocess.Popen("cd {} && git rev-parse --show-toplevel".format(self.current_search_dir),
+                    shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].strip() or None
+            except subprocess.CalledProcessError:
+                git_root_dir = None
 
-    lowered = input_str.lower()
-    if len(lowered) >= 100:
-        # more helpful explanation for the exception we'll get with regex.compile()
-        raise Exception("python2.7 supports only 100 named groups, so this isn't going to work.  What're you doing searching for a string with >= 100 characters?")
+            with self.state_lock:
+                self.git_root_dir = git_root_dir
 
-    if lowered not in ELIGIBLE_FILENAMES_CACHE:
+            def append_batched_filenames(shell_cmd):
+                """ Adds all the files from the output of this command to our candidate_fns in batches. """
+                _logger.debug("running shell cmd {}".format(shell_cmd))
+                proc = subprocess.Popen(shell_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                while True:
+                    if self.interrupted.is_set():
+                        raise CandidateComputationInterruptedException("Interrupted while executing: {}".format(shell_cmd))
+
+                    # TODO batch these
+                    nextline = proc.stdout.readline()
+                    if nextline == "" and proc.poll() != None:
+                        return
+
+                    with self.state_lock:
+                        self.candidate_fns.append(nextline.strip())
+
+            try:
+                if self.git_root_dir is not None:
+                    # return all files in this git tree
+                    # TODO these two git commands will affect the absolute path we use for searching (the former is joined with git_root_dir, the latter is joined with os.getcwd()
+                    for shell_cmd in ("git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD",
+                            "git ls-files --exclude-standard --others"):
+                        append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd))
+                else:
+                    # return all files in the current_search_dir
+                    find_cmd = "find -L {} -type f".format(self.current_search_dir)
+                    if not get_config("find_hidden_directories"):
+                        find_cmd = "{} {}".format(find_cmd, "-not -path '*/.*/*'")
+                    if not get_config("find_hidden_files"):
+                        find_cmd = "{} {}".format(find_cmd, "-not -name '.*'")
+                    append_batched_filenames(find_cmd)
+            except CandidateComputationInterruptedException:
+                continue
+
+            with self.state_lock:
+                self.candidate_fns_cache[self.current_search_dir] = self.candidate_fns
+                # we're done, as long as no one has queued us up for more
+                self.candidate_computation_complete = self.input_str_queue.empty()
+
+    def update_input_str(self, input_str):
+        """ Determines the appropriate directory and queues a recompute of eligible files matching the input string. """
+        old_search_dir = self.current_search_dir
+        self.current_search_dir = self._guess_root_directory(input_str)
+
+        with self.state_lock:
+            self.input_str = input_str
+            if old_search_dir != self.current_search_dir:
+                self.input_str_queue.put(input_str)
+                self.interrupted.set()
+
+    def get_current_filenames(self):
+        """ Get all the relevant filenames given the input string, whether we're done computing them or not. """
+
+        with self.state_lock:
+            candidate_fns = copy.copy(self.candidate_fns)
+            candidate_computation_complete = self.candidate_computation_complete
+            git_root_dir = self.git_root_dir
+            input_str = self.input_str
+            current_search_dir = self.current_search_dir
+
+        eligible_fns = self._compute_eligible_filenames(input_str, candidate_fns, current_search_dir, candidate_computation_complete)
+
+        return CurrentFilenames(candidates=candidate_fns, eligible=eligible_fns, candidate_computation_complete=candidate_computation_complete, git_root_dir=git_root_dir)
+
+    def _compute_eligible_filenames(self, input_str, candidate_fns, current_search_dir, candidate_computation_complete):
+        """ Return a sorted ordering of the filenames based on this input string.
+
+        All filenames that match the input_string are included, and we prefer those
+        that match on word boundaries.
+
+        Note that we don't ever lock the eligible_fns_cache.  This will only be accessed by the main (I/O) thread, so no need to lock. """
+
+        lowered = input_str.lower()
+        if len(lowered) >= 100:
+            # more helpful explanation for the exception we'll get with regex.compile()
+            raise Exception("python2.7 supports only 100 named groups, so this isn't going to work.  What're you doing searching for a string with >= 100 characters?")
+
+        def make_cache_key(search_dir, normalized_input):
+            return (os.path.abspath(search_dir), normalized_input)
+
+        cache_key = make_cache_key(current_search_dir, lowered)
+        if cache_key in self.eligible_fns_cache:
+            return self.eligible_fns_cache[cache_key]
+
         # if this query is at least two characters long and the prefix minus this last letter has already been computed, start with those eligible filenames
         # no need to prune down the whole list if we've already limited the search space
-        initial_filenames = ELIGIBLE_FILENAMES_CACHE.get(lowered[:-1], all_filenames) if len(lowered) >= 2 else all_filenames
+        initial_filenames = (self.eligible_fns_cache.get(make_cache_key(current_search_dir, lowered[:-1]), candidate_fns)
+                if len(lowered) >= 2
+                else candidate_fns)
 
         # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
         # guard against user input that may be construed as a regex
@@ -136,28 +232,37 @@ def compute_eligible_filenames(input_str, all_filenames):
             # and finally in lexicographical order
             return cmp(match_one.string, match_two.string)
 
-        ELIGIBLE_FILENAMES_CACHE[lowered] = [ match.string for match in sorted(matches, cmp=match_cmp) ]
+        eligible_fns = [ match.string for match in sorted(matches, cmp=match_cmp) ]
 
-    return ELIGIBLE_FILENAMES_CACHE[lowered]
+        if candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
+            self.eligible_fns_cache[cache_key] = eligible_fns
+        # TODO return filenames with both the absolute path and the display name (use the latter to open, the former for, well, display)
+        return eligible_fns
 
-def display_filenames(screen, all_filenames):
-    input_str = ""
-    eligible_filenames = compute_eligible_filenames(input_str, all_filenames)
+    def _guess_root_directory(self, input_str):
+        """ Given an input_str, deduce what directory we should search, either by relative path (../../whatever) or by absolute path (/). """
+        # TODO return whether the path is absolute (starts with /)
+        # If the path is absolute, display as absolute
+        # If the path is relative, display as relative
+        return os.path.abspath(".") # TODO be smarter about this
 
+def select_filename(screen, search_thread, input_str):
     highlighted_pos = 0
     key_name = None
 
     while True:
         screen.clear()
 
-        eligible_filenames = compute_eligible_filenames(input_str, all_filenames)
-        highlighted_fn = eligible_filenames[highlighted_pos] if eligible_filenames else None
+        search_thread.update_input_str(input_str)
+        curr_fns = search_thread.get_current_filenames()
+
+        highlighted_fn = curr_fns.eligible[highlighted_pos] if curr_fns.eligible else None
 
         INPUT_Y = 1           # where the input line should go
         FN_OFFSET = 2         # first Y coordinate of a filename
         STATUS_BAR_HEIGHT = 1 # how many lines to save at the bottome
         max_height, max_width = screen.getmaxyx()
-        max_files_to_show = min(len(eligible_filenames), max_height - FN_OFFSET - STATUS_BAR_HEIGHT)
+        max_files_to_show = min(len(curr_fns.eligible), max_height - FN_OFFSET - STATUS_BAR_HEIGHT)
 
         def add_line(y, x, line, attr, fill_line=False):
             s = line[-(max_width - 1):]
@@ -168,12 +273,12 @@ def display_filenames(screen, all_filenames):
         # input line
         add_line(INPUT_Y, 0, input_str, curses.A_UNDERLINE, fill_line=True)
 
-        for pos, fn in enumerate(eligible_filenames[:max_files_to_show]):
+        for pos, fn in enumerate(curr_fns.eligible[:max_files_to_show]):
             attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if pos == highlighted_pos else curses.A_NORMAL
             add_line(FN_OFFSET + pos, 0, fn, attr)
 
         # add status bar
-        status_text = "{:d} of {:d} eligible filenames".format(len(eligible_filenames), len(all_filenames))
+        status_text = "{:d} of {:d} eligible filenames".format(len(curr_fns.eligible), len(curr_fns.candidates))
         add_line(max_height - STATUS_BAR_HEIGHT, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
 
         screen.refresh()
@@ -233,14 +338,28 @@ def open_file(fn):
 
     subprocess.call(shlex.split(editor_cmd) + [fn])
 
+def get_initial_input_str():
+    """ Returns the string that should seed our search.
+
+    TODO parse the existing commandline (READLINE_LINE, READLINE_POINT).
+    If we're in the middle of typing something, seed with that argument.
+    """
+    return ""
+
 def main():
-    filenames = get_filenames()
-    selected_fn = None
+    initial_input_str = get_initial_input_str()
+    search_thread = FilenameSearchThread(initial_input_str)
+    search_thread.start()
     try:
         screen = init_screen()
-        display_filenames(screen, filenames)
+        select_filename(screen, search_thread, initial_input_str)
     finally:
         cleanup_curses()
 
 if __name__ == "__main__":
+    log_level = logging.DEBUG if os.environ.get("DEBUG") else logging.ERROR
+    logging.basicConfig(level=log_level,
+                        format="%(asctime)s: %(message)s",
+                        datefmt="%Y-%m-%d %H:%M:%S")
+    _logger = logging.getLogger(__name__)
     main()
