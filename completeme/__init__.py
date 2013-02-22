@@ -209,8 +209,8 @@ def display_filenames(screen, all_filenames):
 
 def dump_to_prompt(fn):
     with open('/tmp/completeme.sh', 'wb') as f:
-        print >> f, "READLINE_LINE='%s'" % (os.environ.get('READLINE_LINE', '') + fn),
-        print >> f, "READLINE_POINT='%s'" % (int(os.environ.get('READLINE_POINT', 0)) + len(fn))
+        print >> f, "READLINE_LINE='{}'".format(os.environ.get("READLINE_LINE", "") + fn),
+        print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(fn))
 
 def open_file(fn):
     editor_cmd = os.getenv("EDITOR")
