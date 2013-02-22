@@ -374,4 +374,13 @@ if __name__ == "__main__":
                         format="%(asctime)s: %(message)s",
                         datefmt="%Y-%m-%d %H:%M:%S")
     _logger = logging.getLogger(__name__)
-    main()
+
+    if os.environ.get("RUN_PROFILER"):
+        import cProfile
+        import pstats
+        import tempfile
+        _, profile_fn = tempfile.mkstemp()
+        cProfile.run("main()", profile_fn)
+        pstats.Stats(profile_fn).sort_stats("cumulative").print_stats()
+    else:
+        main()
