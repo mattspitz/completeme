@@ -39,12 +39,14 @@ def get_config(key, default="NO_DEFAULT"):
     return load_config()[key] if default == "NO_DEFAULT" else load_config().get(key, default)
 
 HIGHLIGHT_COLOR_PAIR = 1
+STATUS_BAR_COLOR_PAIR = 2
 NEWLINE = "^J"
 TAB = "^I"
 def init_screen():
     screen = curses.initscr()
     curses.start_color()
     curses.init_pair(HIGHLIGHT_COLOR_PAIR, curses.COLOR_RED, curses.COLOR_WHITE)
+    curses.init_pair(STATUS_BAR_COLOR_PAIR, curses.COLOR_GREEN, curses.COLOR_BLACK)
     screen.keypad(1)
     return screen
 
@@ -152,20 +154,28 @@ def display_filenames(screen, all_filenames):
         eligible_filenames = compute_eligible_filenames(input_str, all_filenames)
         highlighted_fn = eligible_filenames[highlighted_pos] if eligible_filenames else None
 
-        INPUT_Y = 1   # where the input line should go
-        FN_OFFSET = 2 # first Y coordinate of a filename
+        INPUT_Y = 1           # where the input line should go
+        FN_OFFSET = 2         # first Y coordinate of a filename
+        STATUS_BAR_HEIGHT = 1 # how many lines to save at the bottome
         max_height, max_width = screen.getmaxyx()
-        max_files_to_show = min(len(eligible_filenames), max_height - FN_OFFSET)
+        max_files_to_show = min(len(eligible_filenames), max_height - FN_OFFSET - STATUS_BAR_HEIGHT)
 
-        # stretch input_str to the max_width for the underline
-        formatted_input_str = input_str[-(max_width - 1):].ljust(max_width, " ")
+        def add_line(y, x, line, attr, fill_line=False):
+            s = line[-(max_width - 1):]
+            if fill_line:
+                s = s.ljust(max_width - 1, " ")
+            screen.addstr(y, x, s, attr)
 
         # input line
-        screen.addstr(INPUT_Y, 0, formatted_input_str, curses.A_UNDERLINE)
+        add_line(INPUT_Y, 0, input_str, curses.A_UNDERLINE, fill_line=True)
 
         for pos, fn in enumerate(eligible_filenames[:max_files_to_show]):
             attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if pos == highlighted_pos else curses.A_NORMAL
-            screen.addstr(FN_OFFSET + pos, 0, fn[-(max_width - 1):], attr)
+            add_line(FN_OFFSET + pos, 0, fn, attr)
+
+        # add status bar
+        status_text = "{:d} of {:d} eligible filenames".format(len(eligible_filenames), len(all_filenames))
+        add_line(max_height - STATUS_BAR_HEIGHT, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
 
         screen.refresh()
 
