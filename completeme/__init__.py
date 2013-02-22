@@ -96,6 +96,10 @@ def compute_eligible_filenames(input_str, all_filenames):
     that match on word boundaries. """
 
     lowered = input_str.lower()
+    if len(lowered) >= 100:
+        # more helpful explanation for the exception we'll get with regex.compile()
+        raise Exception("python2.7 supports only 100 named groups, so this isn't going to work.  What're you doing searching for a string with >= 100 characters?")
+
     if lowered not in ELIGIBLE_FILENAMES_CACHE:
         # if this query is at least two characters long and the prefix minus this last letter has already been computed, start with those eligible filenames
         # no need to prune down the whole list if we've already limited the search space
