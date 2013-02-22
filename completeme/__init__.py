@@ -260,11 +260,11 @@ def select_filename(screen, search_thread, input_str):
 
         highlighted_fn = curr_fns.eligible[highlighted_pos] if curr_fns.eligible else None
 
-        INPUT_Y = 1           # where the input line should go
-        FN_OFFSET = 2         # first Y coordinate of a filename
-        STATUS_BAR_HEIGHT = 1 # how many lines to save at the bottome
+        STATUS_BAR_Y = 0      # status bar first!
+        INPUT_Y = 2           # where the input line should go
+        FN_OFFSET = 3         # first Y coordinate of a filename
         max_height, max_width = screen.getmaxyx()
-        max_files_to_show = min(len(curr_fns.eligible), max_height - FN_OFFSET - STATUS_BAR_HEIGHT)
+        max_files_to_show = min(len(curr_fns.eligible), max_height - FN_OFFSET)
 
         def add_line(y, x, line, attr, fill_line=False):
             s = line[-(max_width - 1):]
@@ -272,16 +272,20 @@ def select_filename(screen, search_thread, input_str):
                 s = s.ljust(max_width - 1, " ")
             screen.addstr(y, x, s, attr)
 
+        # add status bar
+        status_text = "{:d} of {:d}{} candidate filenames{}".format(
+                len(curr_fns.eligible),
+                len(curr_fns.candidates),
+                "*" if not curr_fns.candidate_computation_complete else "",
+                " (git: {})".format(curr_fns.git_root_dir) if curr_fns.git_root_dir is not None else "")
+        add_line(STATUS_BAR_Y, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
+
         # input line
         add_line(INPUT_Y, 0, input_str, curses.A_UNDERLINE, fill_line=True)
 
         for pos, fn in enumerate(curr_fns.eligible[:max_files_to_show]):
             attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if pos == highlighted_pos else curses.A_NORMAL
             add_line(FN_OFFSET + pos, 0, fn, attr)
-
-        # add status bar
-        status_text = "{:d} of {:d} eligible filenames".format(len(curr_fns.eligible), len(curr_fns.candidates))
-        add_line(max_height - STATUS_BAR_HEIGHT, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
 
         screen.refresh()
 
