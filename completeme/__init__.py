@@ -13,6 +13,7 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
 
 import pkg_resources
 
@@ -55,6 +56,7 @@ def init_screen():
     curses.init_pair(HIGHLIGHT_COLOR_PAIR, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(STATUS_BAR_COLOR_PAIR, curses.COLOR_GREEN, curses.COLOR_BLACK)
     screen.keypad(1)
+    screen.nodelay(1) # nonblocking input
     return screen
 
 def cleanup_curses():
@@ -285,11 +287,13 @@ def select_filename(screen, search_thread, input_str):
 
         # put the cursor at the end of the string
         input_x = min(len(input_str), max_width - 1)
-        try:
-            key_name = curses.keyname(screen.getch(INPUT_Y, input_x))
-        except KeyboardInterrupt:
-            # break out with ctrl+c
-            return
+
+        raw_key = screen.getch(INPUT_Y, input_x)
+        if raw_key == -1:
+            # getch() is nonblocking, try again after 50ms
+            time.sleep(.05)
+            continue
+        key_name = curses.keyname(raw_key)
 
         if key_name == NEWLINE:
             # open the file in $EDITOR
