@@ -4,6 +4,7 @@ import curses
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 
@@ -232,7 +233,7 @@ def open_file(fn):
     if editor_cmd is None:
         raise Exception("Environment variable $EDITOR is missing!")
 
-    subprocess.call([ editor_cmd, fn ])
+    subprocess.call(shlex.split(editor_cmd) + [fn])
 
 def main():
     filenames = get_filenames()
