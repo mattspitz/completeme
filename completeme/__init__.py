@@ -40,6 +40,7 @@ def get_config(key, default="NO_DEFAULT"):
 
 HIGHLIGHT_COLOR_PAIR = 1
 NEWLINE = "^J"
+TAB = "^I"
 def init_screen():
     screen = curses.initscr()
     curses.start_color()
@@ -141,7 +142,7 @@ def display_filenames(screen, all_filenames):
     highlighted_pos = 0
     key_name = None
 
-    while key_name != NEWLINE:
+    while True:
         screen.clear()
 
         eligible_filenames = compute_eligible_filenames(input_str, all_filenames)
@@ -169,12 +170,19 @@ def display_filenames(screen, all_filenames):
         try:
             key_name = curses.keyname(screen.getch(INPUT_Y, input_x))
         except KeyboardInterrupt:
-            # swallow ctrl+c
-            return None
+            # break out with ctrl+c
+            return
 
         if key_name == NEWLINE:
-            continue
-        if key_name == "KEY_DOWN":
+            # open the file in $EDITOR
+            open_file(highlighted_fn)
+            return
+        elif key_name == TAB:
+            # dump the character back to the prompt
+            dump_to_prompt(highlighted_fn)
+            return
+
+        elif key_name == "KEY_DOWN":
             highlighted_pos = min(highlighted_pos + 1, max_files_to_show - 1)
         elif key_name == "KEY_UP":
             highlighted_pos = max(highlighted_pos - 1, 0)
@@ -196,23 +204,29 @@ def display_filenames(screen, all_filenames):
             # at this point, input_str has changed, so reset the highlighted_pos
             highlighted_pos = 0
 
-    return highlighted_fn
+    # something's definitely not right
+    raise Exception("Should be unreachable.  Exit this function within the loop!")
+
+def dump_to_prompt(fn):
+    with open('/tmp/completeme.sh', 'wb') as f:
+        print >> f, "READLINE_LINE='%s'" % (os.environ.get('READLINE_LINE', '') + fn),
+        print >> f, "READLINE_POINT='%s'" % (int(os.environ.get('READLINE_POINT', 0)) + len(fn))
+
+def open_file(fn):
+    editor_cmd = os.getenv("EDITOR")
+    if editor_cmd is None:
+        raise Exception("Environment variable $EDITOR is missing!")
+
+    subprocess.call([ editor_cmd, fn ])
 
 def main():
     filenames = get_filenames()
     selected_fn = None
     try:
         screen = init_screen()
-        selected_fn = display_filenames(screen, filenames)
+        display_filenames(screen, filenames)
     finally:
         cleanup_curses()
-
-    if selected_fn:
-        with open('/tmp/completeme.sh', 'wb') as f:
-            print >> f, "READLINE_LINE='%s'" % (os.environ.get('READLINE_LINE', '') + selected_fn),
-            print >> f, "READLINE_POINT='%s'" % (int(os.environ.get('READLINE_POINT', 0)) + len(selected_fn))
-    else:
-        sys.exit(1)
 
 if __name__ == "__main__":
     main()
