@@ -220,13 +220,15 @@ class FilenameSearchThread(threading.Thread):
         matches = filter(lambda match: match is not None,
                          ( regex.search(fn) for fn in initial_filenames ))
 
-        def match_cmp(match_one, match_two):
-            # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
-            def nonempty_groups(match):
-                return filter(lambda x: x,
-                              match.groups())
+        MatchTuple = collections.namedtuple("MatchTuple", ["string", "nonempty_groups"])
 
-            one_groups, two_groups = nonempty_groups(match_one), nonempty_groups(match_two)
+        def nonempty_groups(match):
+            return filter(lambda x: x, match.groups())
+        match_tuples = [ MatchTuple(string=match.string, nonempty_groups=nonempty_groups(match)) for match in matches]
+
+        def matchtuple_cmp(match_one, match_two):
+            # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
+            one_groups, two_groups = match_one.nonempty_groups, match_two.nonempty_groups
 
             diff = len(one_groups) - len(two_groups) # (more nonempty groups -> show up later in the list)
             if diff != 0:
@@ -240,7 +242,7 @@ class FilenameSearchThread(threading.Thread):
             # and finally in lexicographical order
             return cmp(match_one.string, match_two.string)
 
-        eligible_fns = [ match.string for match in sorted(matches, cmp=match_cmp) ]
+        eligible_fns = [ match.string for match in sorted(match_tuples, cmp=matchtuple_cmp) ]
 
         if candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
             self.eligible_fns_cache[cache_key] = eligible_fns
