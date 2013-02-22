@@ -20,3 +20,11 @@ completeme comes with /etc/completeme.json, which you can use to, well, configur
 License
 #######
 This software is licensed under the WtHYWv2 (Whatever the Hell You Want, v2).  Please throw some credit around if it's deserved.
+
+######
+Thanks
+######
+
+Thank you to all who have contributed ideas and feedback.  Special thanks to code contributors, listed below.
+
+* Mark Steve Samson (`@marksteve <https://github.com/marksteve>`_)
