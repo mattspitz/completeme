@@ -361,6 +361,7 @@ def open_file(fn):
             raise Exception("Environment variable $EDITOR is missing!")
 
         subprocess.call(shlex.split(editor_cmd) + [fn])
+        subprocess.call("bash -i -c 'history -s \"{} {}\"'".format(editor_cmd, fn), shell=True)
 
 def get_initial_input_str():
     """ Returns the string that should seed our search.
