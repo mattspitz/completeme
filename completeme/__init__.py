@@ -199,6 +199,7 @@ class FilenameSearchThread(threading.Thread):
 
         cache_key = make_cache_key(current_search_dir, lowered)
         if cache_key in self.eligible_fns_cache:
+            _logger.debug("Found cached eligible_fns key: {}".format(cache_key))
             return self.eligible_fns_cache[cache_key]
 
         # if this query is at least two characters long and the prefix minus this last letter has already been computed, start with those eligible filenames
@@ -206,6 +207,8 @@ class FilenameSearchThread(threading.Thread):
         initial_filenames = (self.eligible_fns_cache.get(make_cache_key(current_search_dir, lowered[:-1]), candidate_fns)
                 if len(lowered) >= 2
                 else candidate_fns)
+
+        _logger.debug("Searching {:d} files for '{}'".format(len(initial_filenames), lowered))
 
         # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
         # guard against user input that may be construed as a regex
