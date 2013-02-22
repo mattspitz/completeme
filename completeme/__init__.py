@@ -186,6 +186,9 @@ class FilenameSearchThread(threading.Thread):
 
         Note that we don't ever lock the eligible_fns_cache.  This will only be accessed by the main (I/O) thread, so no need to lock. """
 
+        if input_str == "":
+            return candidate_fns
+
         lowered = input_str.lower()
         if len(lowered) >= 100:
             # more helpful explanation for the exception we'll get with regex.compile()
