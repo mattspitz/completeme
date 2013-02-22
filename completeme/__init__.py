@@ -298,11 +298,17 @@ def select_filename(screen, search_thread, input_str):
         # put the cursor at the end of the string
         input_x = min(len(input_str), max_width - 1)
 
-        raw_key = screen.getch(INPUT_Y, input_x)
+        # getch is nonblocking; try in 20ms increments for up to 200ms before redrawing screen
+        start_getch = time.time()
+        raw_key = -1
+        while (time.time() - start_getch) < 0.200:
+            raw_key = screen.getch(INPUT_Y, input_x)
+            if raw_key != -1: break
+            time.sleep(0.020)
+
         if raw_key == -1:
-            # getch() is nonblocking, try again after 50ms
-            time.sleep(.05)
             continue
+
         key_name = curses.keyname(raw_key)
 
         if key_name == NEWLINE:
