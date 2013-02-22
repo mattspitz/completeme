@@ -363,6 +363,8 @@ def main():
     try:
         screen = init_screen()
         select_filename(screen, search_thread, initial_input_str)
+    except KeyboardInterrupt:
+        pass
     finally:
         cleanup_curses()
 
