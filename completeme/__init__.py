@@ -334,17 +334,19 @@ def select_filename(screen, search_thread, input_str):
     raise Exception("Should be unreachable.  Exit this function within the loop!")
 
 def dump_to_prompt(fn):
-    with open('/tmp/completeme.sh', 'wb') as f:
-        new_token = fn + " " # add a space at the end for the next argument
-        print >> f, "READLINE_LINE='{}'".format(os.environ.get("READLINE_LINE", "") + new_token),
-        print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(new_token))
+    if fn:
+        with open('/tmp/completeme.sh', 'wb') as f:
+            new_token = fn + " " # add a space at the end for the next argument
+            print >> f, "READLINE_LINE='{}'".format(os.environ.get("READLINE_LINE", "") + new_token),
+            print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(new_token))
 
 def open_file(fn):
-    editor_cmd = os.getenv("EDITOR")
-    if editor_cmd is None:
-        raise Exception("Environment variable $EDITOR is missing!")
+    if fn:
+        editor_cmd = os.getenv("EDITOR")
+        if editor_cmd is None:
+            raise Exception("Environment variable $EDITOR is missing!")
 
-    subprocess.call(shlex.split(editor_cmd) + [fn])
+        subprocess.call(shlex.split(editor_cmd) + [fn])
 
 def get_initial_input_str():
     """ Returns the string that should seed our search.
