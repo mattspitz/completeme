@@ -160,7 +160,8 @@ class FilenameCollectionThread(threading.Thread):
 
         if self.git_root_dir is not None:
             # return all files in this git tree
-            for shell_cmd in ("git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD",
+            for shell_cmd in (
+                    "git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD",
                     "git ls-files --exclude-standard --others"):
                 append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir)
         else:
