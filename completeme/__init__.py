@@ -114,7 +114,7 @@ class FilenameCollectionThread(threading.Thread):
             with self.state_lock:
                 self.git_root_dir = git_root_dir
 
-            def append_batched_filenames(shell_cmd):
+            def append_batched_filenames(shell_cmd, absolute_path=False, base_dir=None):
                 """ Adds all the files from the output of this command to our candidate_fns in batches. """
                 BATCH_SIZE = 100
 
@@ -125,11 +125,13 @@ class FilenameCollectionThread(threading.Thread):
                     if self.interrupted.is_set():
                         raise CandidateComputationInterruptedException("Interrupted while executing: {}".format(shell_cmd))
 
-                    nextline = proc.stdout.readline()
+                    nextline = proc.stdout.readline().strip()
                     if nextline == "" and proc.poll() != None:
                         break
 
-                    batch.append(nextline.strip())
+                    fn = os.path.join(base_dir, nextline) if base_dir is not None else nextline
+                    batch.append(os.path.abspath(fn) if absolute_path else os.path.relpath(fn))
+
                     if len(batch) >= BATCH_SIZE:
                         with self.state_lock:
                             self.candidate_fns.extend(batch)
@@ -142,10 +144,9 @@ class FilenameCollectionThread(threading.Thread):
             try:
                 if self.git_root_dir is not None:
                     # return all files in this git tree
-                    # TODO these two git commands will affect the absolute path we use for searching (the former is joined with git_root_dir, the latter is joined with os.getcwd()
                     for shell_cmd in ("git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD",
                             "git ls-files --exclude-standard --others"):
-                        append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd))
+                        append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir)
                 else:
                     # return all files in the current_search_dir
                     find_cmd = "find -L {} -type f".format(self.current_search_dir)
@@ -153,7 +154,7 @@ class FilenameCollectionThread(threading.Thread):
                         find_cmd = "{} {}".format(find_cmd, "-not -path '*/.*/*'")
                     if not get_config("find_hidden_files"):
                         find_cmd = "{} {}".format(find_cmd, "-not -name '.*'")
-                    append_batched_filenames(find_cmd)
+                    append_batched_filenames(find_cmd, absolute_path=os.path.isabs(self.current_search_dir))
             except CandidateComputationInterruptedException:
                 continue
 
@@ -170,6 +171,7 @@ class FilenameCollectionThread(threading.Thread):
         with self.state_lock:
             self.input_str = input_str
             if old_search_dir != self.current_search_dir:
+                _logger.debug("Switching search directory from {} to {}.".format(old_search_dir, self.current_search_dir))
                 self.input_str_queue.put(input_str)
                 self.interrupted.set()
 
@@ -263,7 +265,7 @@ class FilenameCollectionThread(threading.Thread):
         # TODO return whether the path is absolute (starts with /)
         # If the path is absolute, display as absolute
         # If the path is relative, display as relative
-        return os.path.abspath(".") # TODO be smarter about this
+        return "." # TODO be smarter about this
 
 def select_filename(screen, fn_collection_thread, input_str):
     highlighted_pos = 0
