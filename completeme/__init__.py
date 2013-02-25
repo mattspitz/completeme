@@ -376,7 +376,10 @@ def select_filename(screen, fn_collection_thread, input_str):
             s = line[-(max_width - 1):]
             if fill_line:
                 s = s.ljust(max_width - 1, " ")
-            screen.addstr(y, x, s, attr)
+            try:
+                screen.addstr(y, x, s, attr)
+            except Exception:
+                _logger.debug("Couldn't add string to screen: {}".format(s))
 
         # add status bar
         status_text = "{:d}{} of {:d}{} candidate filenames{}".format(
