@@ -68,9 +68,9 @@ class CandidateComputationInterruptedException(Exception):
     pass
 
 CurrentFilenames = collections.namedtuple("CurrentFilenames", [ "candidates", "eligible", "candidate_computation_complete", "git_root_dir" ])
-class FilenameSearchThread(threading.Thread):
+class FilenameCollectionThread(threading.Thread):
     def __init__(self, initial_input_str):
-        super(FilenameSearchThread, self).__init__()
+        super(FilenameCollectionThread, self).__init__()
         self.daemon = True
 
         self.interrupted = threading.Event()
@@ -256,15 +256,15 @@ class FilenameSearchThread(threading.Thread):
         # If the path is relative, display as relative
         return os.path.abspath(".") # TODO be smarter about this
 
-def select_filename(screen, search_thread, input_str):
+def select_filename(screen, fn_collection_thread, input_str):
     highlighted_pos = 0
     key_name = None
 
     while True:
         screen.clear()
 
-        search_thread.update_input_str(input_str)
-        curr_fns = search_thread.get_current_filenames()
+        fn_collection_thread.update_input_str(input_str)
+        curr_fns = fn_collection_thread.get_current_filenames()
 
         highlighted_fn = curr_fns.eligible[highlighted_pos] if curr_fns.eligible else None
 
@@ -373,11 +373,11 @@ def get_initial_input_str():
 
 def main():
     initial_input_str = get_initial_input_str()
-    search_thread = FilenameSearchThread(initial_input_str)
-    search_thread.start()
+    fn_collection_thread = FilenameCollectionThread(initial_input_str)
+    fn_collection_thread.start()
     try:
         screen = init_screen()
-        select_filename(screen, search_thread, initial_input_str)
+        select_filename(screen, fn_collection_thread, initial_input_str)
     except KeyboardInterrupt:
         pass
     finally:
