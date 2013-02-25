@@ -17,7 +17,11 @@ import time
 
 import pkg_resources
 
-_logger = None
+
+logging.basicConfig(level=logging.DEBUG if os.environ.get("DEBUG") else logging.ERROR,
+                    format="%(asctime)s: %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S")
+_logger = logging.getLogger(__name__)
 
 CONFIG_FN = pkg_resources.resource_filename(__name__, "conf/completeme.json")
 def get_config(key, default="NO_DEFAULT"):
@@ -486,12 +490,6 @@ def main():
         cleanup_curses()
 
 if __name__ == "__main__":
-    log_level = logging.DEBUG if os.environ.get("DEBUG") else logging.ERROR
-    logging.basicConfig(level=log_level,
-                        format="%(asctime)s: %(message)s",
-                        datefmt="%Y-%m-%d %H:%M:%S")
-    _logger = logging.getLogger(__name__)
-
     if os.environ.get("RUN_PROFILER"):
         import cProfile
         import pstats
