@@ -257,7 +257,6 @@ class FilenameCollectionThread(threading.Thread):
 
         if candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
             self.eligible_fns_cache[cache_key] = eligible_fns
-        # TODO return filenames with both the absolute path and the display name (use the latter to open, the former for, well, display)
         return eligible_fns
 
     def _guess_root_directory(self, input_str):
@@ -265,7 +264,7 @@ class FilenameCollectionThread(threading.Thread):
         # TODO return whether the path is absolute (starts with /)
         # If the path is absolute, display as absolute
         # If the path is relative, display as relative
-        return "." # TODO be smarter about this
+        return "."
 
 def select_filename(screen, fn_collection_thread, input_str):
     highlighted_pos = 0
