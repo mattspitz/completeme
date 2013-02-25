@@ -73,7 +73,6 @@ class FilenameCollectionThread(threading.Thread):
         super(FilenameCollectionThread, self).__init__()
         self.daemon = True
 
-        self.interrupted = threading.Event()
         self.input_str_queue = Queue.Queue()
         self.state_lock = threading.Lock()            # for updating shared state
 
@@ -87,6 +86,9 @@ class FilenameCollectionThread(threading.Thread):
         self.input_str = None
         self.update_input_str(initial_input_str)
 
+    def _interrupted(self):
+        return not self.input_str_queue.empty()
+
     def run(self):
         while True:
             next_input_str = self.input_str_queue.get()
@@ -94,9 +96,6 @@ class FilenameCollectionThread(threading.Thread):
                 # clear out the queue in case we had multiple strings queued up
                 while not self.input_str_queue.empty():
                     next_input_str = self.input_str_queue.get()
-
-                # allow ourselves to be interrupted again
-                self.interrupted.clear()
 
                 # indicate that we're not done computing
                 self.candidate_computation_complete = False
@@ -122,7 +121,7 @@ class FilenameCollectionThread(threading.Thread):
                 proc = subprocess.Popen(shell_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 batch = []
                 while True:
-                    if self.interrupted.is_set():
+                    if self._interrupted():
                         raise CandidateComputationInterruptedException("Interrupted while executing: {}".format(shell_cmd))
 
                     nextline = proc.stdout.readline().strip()
@@ -173,7 +172,6 @@ class FilenameCollectionThread(threading.Thread):
             if old_search_dir != self.current_search_dir:
                 _logger.debug("Switching search directory from {} to {}.".format(old_search_dir, self.current_search_dir))
                 self.input_str_queue.put(input_str)
-                self.interrupted.set()
 
     def get_current_filenames(self):
         """ Get all the relevant filenames given the input string, whether we're done computing them or not. """
