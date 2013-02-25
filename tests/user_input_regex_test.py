@@ -1,5 +1,6 @@
 import os
 import random
+import time
 import unittest
 
 import completeme
@@ -9,6 +10,29 @@ class UserInputRegexTest(unittest.TestCase):
     def setUp(self):
         """ Always wipe out the eligible filenames cache. """
         completeme.ELIGIBLE_FILENAMES_CACHE = {}
+
+    def compute_eligible_filenames(self, input_str, candidates):
+        """ Helper for spinning up a thread and waiting for results. """
+
+        bg_thread = completeme.SearchThread(
+                input_str,
+                completeme.CurrentFilenames(
+                    candidates=candidates,
+                    candidate_computation_complete=True,
+                    current_search_dir=".",
+                    git_root_dir=".",
+                    uuid=None))
+        bg_thread.start()
+
+        start = time.time()
+        while True:
+            eligible_fns = bg_thread.get_eligible_filenames()
+            if not eligible_fns.search_complete:
+                if time.time() - start > 2:
+                    raise Exception("This should have taken way less than two seconds...")
+                time.sleep(0.01)
+                continue
+            return eligible_fns.eligible
 
     def test_regexy_characters(self):
         """ Ensures that even if the user inputs things like . and * and ? that we won't explode. """
@@ -28,7 +52,7 @@ class UserInputRegexTest(unittest.TestCase):
         def run_test(input_str, expected):
             # we use sorted to check for presence, not order
             self.assertEqual(
-                    sorted(completeme.compute_eligible_filenames(input_str, ELIGIBLE_FILENAMES)),
+                    sorted(self.compute_eligible_filenames(input_str, ELIGIBLE_FILENAMES)),
                     sorted(expected)
                     )
 
@@ -51,7 +75,7 @@ class UserInputRegexTest(unittest.TestCase):
 
         for input_str in ["fox", "FOX", "FoX", "fOX"]:
             self.assertEqual(
-                    sorted(completeme.compute_eligible_filenames(input_str, [CAPS, LOWER])),
+                    sorted(self.compute_eligible_filenames(input_str, [CAPS, LOWER])),
                     sorted([CAPS, LOWER])
                     )
 
@@ -63,7 +87,7 @@ class UserInputRegexTest(unittest.TestCase):
         def run_test(input_str, eligible, expected):
             random.shuffle(eligible)
             self.assertEqual(
-                    completeme.compute_eligible_filenames(input_str, eligible),
+                    self.compute_eligible_filenames(input_str, eligible),
                     expected
                     )
 
