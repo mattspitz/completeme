@@ -116,19 +116,28 @@ class FilenameCollectionThread(threading.Thread):
 
             def append_batched_filenames(shell_cmd):
                 """ Adds all the files from the output of this command to our candidate_fns in batches. """
+                BATCH_SIZE = 100
+
                 _logger.debug("running shell cmd {}".format(shell_cmd))
                 proc = subprocess.Popen(shell_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                batch = []
                 while True:
                     if self.interrupted.is_set():
                         raise CandidateComputationInterruptedException("Interrupted while executing: {}".format(shell_cmd))
 
-                    # TODO batch these
                     nextline = proc.stdout.readline()
                     if nextline == "" and proc.poll() != None:
-                        return
+                        break
 
-                    with self.state_lock:
-                        self.candidate_fns.append(nextline.strip())
+                    batch.append(nextline.strip())
+                    if len(batch) >= BATCH_SIZE:
+                        with self.state_lock:
+                            self.candidate_fns.extend(batch)
+                            batch = []
+
+                with self.state_lock:
+                    # clean up the stragglers
+                    self.candidate_fns.extend(batch)
 
             try:
                 if self.git_root_dir is not None:
