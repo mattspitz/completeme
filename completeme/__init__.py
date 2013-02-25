@@ -286,17 +286,15 @@ class SearchThread(threading.Thread):
             if lowered == "":
                 return candidate_fns
 
-            with self.state_lock:
-                if cache_key in self.eligible_fns_cache:
-                    _logger.debug("Found cached eligible_fns key: {}".format(cache_key))
-                    return self.eligible_fns_cache[cache_key]
+            if cache_key in self.eligible_fns_cache:
+                _logger.debug("Found cached eligible_fns key: {}".format(cache_key))
+                return self.eligible_fns_cache[cache_key]
 
             # if this query is at least two characters long and the prefix minus this last letter has already been computed, start with those eligible filenames
             # no need to prune down the whole list if we've already limited the search space
-            with self.state_lock:
-                initial_filenames = (self.eligible_fns_cache.get(make_cache_key(current_search_dir, lowered[:-1]), candidate_fns)
-                        if len(lowered) >= 2
-                        else candidate_fns)
+            initial_filenames = (self.eligible_fns_cache.get(make_cache_key(current_search_dir, lowered[:-1]), candidate_fns)
+                    if len(lowered) >= 2
+                    else candidate_fns)
 
             _logger.debug("Searching {:d} files for '{}'".format(len(initial_filenames), lowered))
 
@@ -346,8 +344,9 @@ class SearchThread(threading.Thread):
 
         with self.state_lock:
             self.eligible_fns = eligible_fns
-            if candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
-                self.eligible_fns_cache[cache_key] = self.eligible_fns
+
+        if candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
+            self.eligible_fns_cache[cache_key] = eligible_fns
 
 def select_filename(screen, fn_collection_thread, input_str):
     highlighted_pos = 0
