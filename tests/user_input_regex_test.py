@@ -20,8 +20,7 @@ class UserInputRegexTest(unittest.TestCase):
                     candidates=candidates,
                     candidate_computation_complete=True,
                     current_search_dir=".",
-                    git_root_dir=".",
-                    uuid=None))
+                    git_root_dir="."))
         bg_thread.start()
 
         start = time.time()
