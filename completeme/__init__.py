@@ -295,6 +295,10 @@ class SearchThread(threading.Thread):
 
     def update_input(self, input_str, current_filenames):
         """ Queue up computation given a (possibly new) input string and the current state from the FilenameCollectionThread's get_current_filenames() . """
+        if any( map(lambda x: x is None, [ input_str, current_filenames.current_search_dir, current_filenames.candidates ]) ):
+            # nothing to update!
+            return
+
         if (input_str != self.input_str
                 or not self.input_queue.empty()):
             # we've got a new input str or we've already queued up input OR we're already going to trigger a new search, so make sure we've got the latest input before we start
