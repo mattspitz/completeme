@@ -581,13 +581,16 @@ def select_filename(screen, fn_collection_thread, input_str):
     # something's definitely not right
     raise Exception("Should be unreachable.  Exit this function within the loop!")
 
+def _shellquote(s):
+    """ Cleans up a filename for the shell (from http://stackoverflow.com/a/35857) """
+    return "'" + s.replace("'", "'\\''") + "'"
 
 OUTPUT_SH = "/tmp/completeme.sh"
 def dump_to_prompt(fn):
     if fn:
         with open(OUTPUT_SH, 'wb') as f:
-            new_token = fn + " " # add a space at the end for the next argument
-            print >> f, "READLINE_LINE='{}'".format(os.environ.get("READLINE_LINE", "") + new_token),
+            new_token = _shellquote(_shellquote(fn) + " ") # double shell-quote because we're setting an environment variable with the quoted string
+            print >> f, "READLINE_LINE='{}'{}".format(os.environ.get("READLINE_LINE", ""), new_token),
             print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(new_token))
 
 def open_file(fn):
@@ -597,9 +600,9 @@ def open_file(fn):
             raise Exception("Environment variable $EDITOR is missing!")
 
         with open(OUTPUT_SH, "wb") as f:
-            cmd = "{} {}".format(editor_cmd, fn)
+            cmd = "{} {}".format(editor_cmd, _shellquote(fn))
             print >> f, cmd
-            print >> f, "history -s '{}'".format(cmd)
+            print >> f, "history -s \"{}\"".format(cmd)
 
 def get_initial_input_str():
     """ Returns the string that should seed our search.
