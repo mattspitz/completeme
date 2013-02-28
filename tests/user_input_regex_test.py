@@ -80,8 +80,6 @@ class UserInputRegexTest(unittest.TestCase):
 
     def test_ranking(self):
         """ Ensures that we rank long-matching substrings above short-matching substrings and shorter gaps between matches over longer. """
-        A = "My Documents/Wow/Remember Those Days?.txt"
-        B = "My Documents/Wow/Wow/Wow/Remember Those Days?.txt"
 
         def run_test(input_str, eligible, expected):
             random.shuffle(eligible)
@@ -90,9 +88,14 @@ class UserInputRegexTest(unittest.TestCase):
                     expected
                     )
 
+        A = "My Documents/Wow/Remember Those Days?.txt"
+        B = "My Documents/Wow/Wow/Wow/Remember Those Days?.txt"
         run_test("My Days", [A, B], [A, B]) # prefer shorter distance between My and Days
 
         C = "My Documents/Gross Stuff/Gross and Gross/Created By/YoursTruly.txt"
         D = "My Documents/Pictures/Dogs and Cats.jpg"
-
         run_test("dogs and cats", [C, D], [D, C]) # find the shortest gaps between matching substrings
+
+        E = "MavisBeaconEnters/src/main/resources/whatever.txt"
+        F = "MavisBeaconEnters/src/main/java/com/mavisbeacon/app/enters/typing/is/fun/MBEResource.java"
+        run_test("mberesource", [E, F], [F, E]) # push off the match as much as possible to get the grouping at the end
