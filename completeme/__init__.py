@@ -71,7 +71,7 @@ def cleanup_curses():
 class ComputationInterruptedException(Exception):
     pass
 
-CurrentFilenames = collections.namedtuple("CurrentFilenames", [ "candidates", "candidate_computation_complete", "git_root_dir", "current_search_dir", "uuid" ])
+CurrentFilenames = collections.namedtuple("CurrentFilenames", [ "candidates", "candidate_computation_complete", "git_root_dir", "current_search_dir" ])
 class FilenameCollectionThread(threading.Thread):
     def __init__(self, initial_input_str):
         super(FilenameCollectionThread, self).__init__()
@@ -83,7 +83,7 @@ class FilenameCollectionThread(threading.Thread):
         self.current_search_dir = None                # only re-run find/git if the search directory changes
         self.candidate_computation_complete = False   # are we done getting all filenames for the current search directory?
         self.candidate_fns_cache = {}                 # cache for candidate filenames given an input_str
-        self.candidate_fns = []                       # current set of candidate functions
+        self.candidate_fns = set()                    # current set of candidate functions
         self.git_root_dir = None                      # git root directory
 
         self.update_input_str(initial_input_str)
@@ -93,8 +93,13 @@ class FilenameCollectionThread(threading.Thread):
 
     def run(self):
         while True:
-            next_search_dir = self.search_dir_queue.get()
+            if self.search_dir_queue.empty():
+                # don't hold the state lock until we have a queued search_dir available
+                time.sleep(0.005)
+                continue
+
             with self.state_lock:
+                assert not self.search_dir_queue.empty()
                 # clear out the queue in case we had multiple strings queued up
                 while not self.search_dir_queue.empty():
                     next_search_dir = self.search_dir_queue.get()
@@ -105,7 +110,7 @@ class FilenameCollectionThread(threading.Thread):
                 self.candidate_computation_complete = False
 
                 # reset
-                self.candidate_fns = []
+                self.candidate_fns = set()
 
             try:
                 self._compute_candidates()
@@ -151,16 +156,18 @@ class FilenameCollectionThread(threading.Thread):
 
                 if len(batch) >= BATCH_SIZE:
                     with self.state_lock:
-                        self.candidate_fns.extend(batch)
+                        self.candidate_fns.update(batch)
                         batch = []
 
-            with self.state_lock:
-                # clean up the stragglers
-                self.candidate_fns.extend(batch)
+            if batch:
+                with self.state_lock:
+                    # clean up the stragglers
+                    self.candidate_fns.update(batch)
 
         if self.git_root_dir is not None:
             # return all files in this git tree
-            for shell_cmd in ("git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD",
+            for shell_cmd in (
+                    "git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD",
                     "git ls-files --exclude-standard --others"):
                 append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir)
         else:
@@ -190,10 +197,7 @@ class FilenameCollectionThread(threading.Thread):
             git_root_dir = self.git_root_dir
             current_search_dir = self.current_search_dir
 
-        # useful for summarizing the current state
-        uuid = hash("".join( [current_search_dir] + candidate_fns ))
-
-        return CurrentFilenames(candidates=candidate_fns, candidate_computation_complete=candidate_computation_complete, git_root_dir=git_root_dir, current_search_dir=current_search_dir, uuid=uuid)
+        return CurrentFilenames(candidates=candidate_fns, candidate_computation_complete=candidate_computation_complete, git_root_dir=git_root_dir, current_search_dir=current_search_dir)
 
     def _guess_root_directory(self, input_str):
         """ Given an input_str, deduce what directory we should search, either by relative path (../../whatever) or by absolute path (/). """
@@ -204,6 +208,10 @@ class FilenameCollectionThread(threading.Thread):
 
 EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "search_complete" ])
 class SearchThread(threading.Thread):
+    NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "candidate_fns", "candidate_computation_complete" ])
+    IncrementalInput = collections.namedtuple("IncrementalInput", [ "new_candidate_fns", "candidate_computation_complete" ])
+    MatchTuple = collections.namedtuple("MatchTuple", ["string", "num_nonempty_groups", "total_group_length", "num_dirs_in_path" ])
+
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
         self.daemon = True
@@ -212,12 +220,15 @@ class SearchThread(threading.Thread):
         self.state_lock = threading.Lock()
 
         self.input_str = None
-        self.current_filenames = None
+        self.current_search_dir = None
+        self.new_candidate_fns = None               # used for incremental search
+        self.candidate_fns = None
+        self.candidate_computation_complete = None
 
         self.search_complete = False
 
-        self.eligible_fns = []
-        self.eligible_fns_cache = {}        # cache for eligible filenames given an input_str and a current_search_dir
+        self.eligible_matchtuples = []
+        self.eligible_matchtuples_cache = {}        # cache for eligible filenames given an input_str and a current_search_dir
 
         self.update_input(initial_input_str, initial_current_filenames)
 
@@ -226,17 +237,34 @@ class SearchThread(threading.Thread):
 
     def run(self):
         while True:
-            next_input_str, next_current_filenames = self.input_queue.get()
+            if self.input_queue.empty():
+                # don't hold our state_lock until we have a queued item available
+                time.sleep(0.005)
+                continue
+
             with self.state_lock:
+                assert not self.input_queue.empty()
                 # clear out the queue in case we had a couple pile up
                 while not self.input_queue.empty():
-                    next_input_str, next_current_filenames = self.input_queue.get()
+                    next_input = self.input_queue.get()
 
-                self.input_str = next_input_str
-                self.current_filenames = next_current_filenames
+                if isinstance(next_input, self.NewInput):
+                    self.input_str = next_input.input_str
+                    self.current_search_dir = next_input.current_search_dir
+                    self.candidate_fns = next_input.candidate_fns
+                    self.new_candidate_fns = None
+                    self.candidate_computation_complete = next_input.candidate_computation_complete
+                    self.eligible_matchtuples = []
+
+                elif isinstance(next_input, self.IncrementalInput):
+                    self.candidate_fns.update(next_input.new_candidate_fns)
+                    self.new_candidate_fns = next_input.new_candidate_fns
+                    self.candidate_computation_complete = next_input.candidate_computation_complete
+
+                else:
+                    raise Exception("Unrecognized input!: {}".format(next_input))
 
                 self.search_complete = False
-                self.eligible_fns = []
 
             try:
                 self._compute_eligible_filenames()
@@ -250,18 +278,61 @@ class SearchThread(threading.Thread):
     def update_input(self, input_str, current_filenames):
         """ Queue up computation given a (possibly new) input string and the current state from the FilenameCollectionThread's get_current_filenames() . """
         if (input_str != self.input_str
-                or self.current_filenames.uuid != current_filenames.uuid):
+                or not self.input_queue.empty()):
+            # we've got a new input str or we've already queued up input OR we're already going to trigger a new search, so make sure we've got the latest input before we start
             with self.state_lock:
                 _logger.debug("Triggering new search with input string '{}' and {:d} candidate filenames.".format(input_str, len(current_filenames.candidates)))
-                self.input_queue.put( (input_str, current_filenames) )
+                self.input_queue.put(self.NewInput(
+                    input_str=input_str,
+                    current_search_dir=current_filenames.current_search_dir,
+                    candidate_fns=current_filenames.candidates,
+                    candidate_computation_complete=current_filenames.candidate_computation_complete
+                    ))
+
+        elif (input_str == self.input_str
+                and current_filenames.current_search_dir == self.current_search_dir
+                and self.search_complete
+                and not self.candidate_computation_complete
+                and self.input_queue.empty()):
+            # we've found more files in the same directory with the same query and aren't currently interrupted
+            # so... add on an incremental search!
+            with self.state_lock:
+                new_files = current_filenames.candidates.difference(self.candidate_fns)
+                _logger.debug("Adding {:d} more files to current search for input_str '{}' in directory {}.".format(len(new_files), input_str, current_filenames.current_search_dir))
+                self.input_queue.put(self.IncrementalInput(
+                    new_candidate_fns=new_files,
+                    candidate_computation_complete=current_filenames.candidate_computation_complete
+                    ))
 
     def get_eligible_filenames(self):
         """ Retrieve a current snapshot of what we think are the current eligible filenames. """
         with self.state_lock:
-            eligible_fns = copy.copy(self.eligible_fns)
+            eligible_fns = [ match.string for match in self.eligible_matchtuples ]
             search_complete = self.search_complete
 
         return EligibleFilenames(eligible=eligible_fns, search_complete=search_complete)
+
+    @staticmethod
+    def _matchtuple_cmp(match_one, match_two):
+        # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
+
+        # (more nonempty groups -> show up later in the list)
+        diff = match_one.num_nonempty_groups - match_two.num_nonempty_groups
+        if diff != 0:
+            return diff
+
+        # then the shortest total length of all groups (prefer "MyGreatFile.txt" over "My Documents/stuff/File.txt")
+        diff = match_one.total_group_length - match_two.total_group_length
+        if diff != 0:
+            return diff
+
+        # prefer files in this directory before files elsewhere
+        diff = match_one.num_dirs_in_path - match_two.num_dirs_in_path
+        if diff != 0:
+            return diff
+
+        # and finally in lexicographical order
+        return cmp(match_one.string, match_two.string)
 
     def _compute_eligible_filenames(self):
         """ Return a sorted ordering of the filenames based on this input string.
@@ -269,10 +340,6 @@ class SearchThread(threading.Thread):
         All filenames that match the input_string are included, and we prefer those
         that match on word boundaries.
         """
-        _logger.debug("Starting search with input string '{}'.".format(self.input_str))
-
-        candidate_fns, current_search_dir, candidate_computation_complete = self.current_filenames.candidates, self.current_filenames.current_search_dir, self.current_filenames.candidate_computation_complete
-
         lowered = self.input_str.lower()
         if len(lowered) >= 100:
             # more helpful explanation for the exception we'll get with regex.compile()
@@ -281,31 +348,50 @@ class SearchThread(threading.Thread):
         def make_cache_key(search_dir, normalized_input):
             return (os.path.abspath(search_dir), normalized_input)
 
-        cache_key = make_cache_key(current_search_dir, lowered)
+        cache_key = make_cache_key(self.current_search_dir, lowered)
+
+        def is_incremental_search():
+            return self.new_candidate_fns is not None
+
+        def get_num_dirs_in_path(fn):
+            count = 0
+            while fn:
+                head, _ = os.path.split(fn)
+                if head:
+                    count += 1
+                else:
+                    break
+                fn = head
+            return count
+
         def perform_search():
+            if cache_key in self.eligible_matchtuples_cache:
+                _logger.debug("Found cached eligible_matchtuples key: {}".format(cache_key))
+                return self.eligible_matchtuples_cache[cache_key]
+
+            if is_incremental_search():
+                initial_filenames = self.new_candidate_fns
+            else:
+                # if this query is at least two characters long and the prefix minus this last letter has already been computed, start with those eligible filenames
+                # no need to prune down the whole list if we've already limited the search space
+                prev_cache_key = make_cache_key(self.current_search_dir, lowered[:-1])
+                if len(lowered) >= 2 and prev_cache_key in self.eligible_matchtuples_cache:
+                    initial_filenames = [ match.string for match in self.eligible_matchtuples_cache[prev_cache_key] ]
+                else:
+                    initial_filenames = self.candidate_fns
+
+            _logger.debug("Searching {:d} files for '{}'{}".format(len(initial_filenames), lowered, " (incremental!)" if is_incremental_search() else ""))
+
             if lowered == "":
-                return candidate_fns
+                _logger.debug("Returning all candidates for empty input str.")
+                return [ self.MatchTuple(string=fn, num_nonempty_groups=0, total_group_length=0, num_dirs_in_path=get_num_dirs_in_path(fn)) for fn in initial_filenames ]
 
-            with self.state_lock:
-                if cache_key in self.eligible_fns_cache:
-                    _logger.debug("Found cached eligible_fns key: {}".format(cache_key))
-                    return self.eligible_fns_cache[cache_key]
-
-            # if this query is at least two characters long and the prefix minus this last letter has already been computed, start with those eligible filenames
-            # no need to prune down the whole list if we've already limited the search space
-            with self.state_lock:
-                initial_filenames = (self.eligible_fns_cache.get(make_cache_key(current_search_dir, lowered[:-1]), candidate_fns)
-                        if len(lowered) >= 2
-                        else candidate_fns)
-
-            _logger.debug("Searching {:d} files for '{}'".format(len(initial_filenames), lowered))
 
             # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
             # guard against user input that may be construed as a regex
             regex_str = "(.*?)".join( re.escape(ch) for ch in lowered )
             regex = re.compile(regex_str, re.IGNORECASE | re.DOTALL)
 
-            MatchTuple = collections.namedtuple("MatchTuple", ["string", "num_nonempty_groups", "total_group_length"])
             def get_match_tuples_it():
                 def nonempty_groups(match):
                     return filter(lambda x: x, match.groups())
@@ -317,37 +403,43 @@ class SearchThread(threading.Thread):
                     match = regex.search(fn)
                     if match is not None:
                         negs = nonempty_groups(match)
-                        yield MatchTuple(
+                        yield self.MatchTuple(
                                 string=match.string,
                                 num_nonempty_groups = len(negs),
-                                total_group_length=len("".join(negs))
+                                total_group_length=len("".join(negs)),
+                                num_dirs_in_path=get_num_dirs_in_path(match.string)
                                 )
+            return list(get_match_tuples_it())
 
-            def matchtuple_cmp(match_one, match_two):
-                # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
+        if is_incremental_search():
+            eligible_matchtuples = self.eligible_matchtuples + perform_search()
+        else:
+            eligible_matchtuples = perform_search()
 
-                # (more nonempty groups -> show up later in the list)
-                diff = match_one.num_nonempty_groups - match_two.num_nonempty_groups
-                if diff != 0:
-                    return diff
-
-                # then the shortest total length of all groups (prefer "MyGreatFile.txt" over "My Documents/stuff/File.txt")
-                diff = match_one.total_group_length - match_two.total_group_length
-                if diff != 0:
-                    return diff
-
-                # and finally in lexicographical order
-                return cmp(match_one.string, match_two.string)
-
-            return [ match.string for match in sorted(get_match_tuples_it(), cmp=matchtuple_cmp) ]
-
-        eligible_fns = perform_search()
-        _logger.debug("Found {:d} eligible filenames for input string '{}'".format(len(eligible_fns), self.input_str))
+        # need to re-sort if incremental!
+        eligible_matchtuples.sort(cmp=self._matchtuple_cmp)
+        _logger.debug("Found {:d} eligible matchtuples.".format(len(eligible_matchtuples)))
 
         with self.state_lock:
-            self.eligible_fns = eligible_fns
-            if candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
-                self.eligible_fns_cache[cache_key] = self.eligible_fns
+            self.eligible_matchtuples = eligible_matchtuples
+
+            if self.candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
+                self.eligible_matchtuples_cache[cache_key] = eligible_matchtuples
+
+class SearchStatus(object):
+    SEARCH_STATUS_CHARS = ("|", "\\", "-", "/")
+
+    def __init__(self):
+        super(SearchStatus, self).__init__()
+        self.curr_idx = None
+        self.reset_status()
+
+    def reset_status(self):
+        self.curr_idx = 0
+
+    def get_next_status_char(self):
+        self.curr_idx = (self.curr_idx + 1) % len(self.SEARCH_STATUS_CHARS)
+        return self.SEARCH_STATUS_CHARS[self.curr_idx]
 
 def select_filename(screen, fn_collection_thread, input_str):
     highlighted_pos = 0
@@ -355,6 +447,8 @@ def select_filename(screen, fn_collection_thread, input_str):
 
     search_thread = SearchThread(input_str, fn_collection_thread.get_current_filenames())
     search_thread.start()
+
+    search_status = SearchStatus()
 
     while True:
         screen.clear()
@@ -385,12 +479,17 @@ def select_filename(screen, fn_collection_thread, input_str):
             except Exception:
                 _logger.debug("Couldn't add string to screen: {}".format(s))
 
+        if (not eligible_fns.search_complete or not curr_fns.candidate_computation_complete):
+            search_status_prefix = "{} ".format(search_status.get_next_status_char())
+        else:
+            search_status_prefix = "  "
+            search_status.reset_status()
+
         # add status bar
-        status_text = "{:d}{} of {:d}{} candidate filenames{}".format(
+        status_text = "{}{:d} of {:d} candidate filenames{}".format(
+                search_status_prefix,
                 len(eligible_fns.eligible),
-                "*" if not eligible_fns.search_complete else "",
                 len(curr_fns.candidates),
-                "*" if not curr_fns.candidate_computation_complete else "",
                 " (git: {})".format(curr_fns.git_root_dir) if curr_fns.git_root_dir is not None else "")
         add_line(STATUS_BAR_Y, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
 
@@ -406,10 +505,10 @@ def select_filename(screen, fn_collection_thread, input_str):
         # put the cursor at the end of the string
         input_x = min(len(input_str), max_width - 1)
 
-        # getch is nonblocking; try in 20ms increments for up to 200ms before redrawing screen
+        # getch is nonblocking; try in 20ms increments for up to 80ms before redrawing screen
         start_getch = time.time()
         raw_key = -1
-        while (time.time() - start_getch) < 0.200:
+        while (time.time() - start_getch) < 0.080:
             raw_key = screen.getch(INPUT_Y, input_x)
             if raw_key != -1: break
             time.sleep(0.020)
