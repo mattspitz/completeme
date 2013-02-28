@@ -412,7 +412,8 @@ class SearchThread(threading.Thread):
             # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
             # guard against user input that may be construed as a regex
             regex_str = "(.*?)".join( re.escape(ch) for ch in lowered )
-            regex = re.compile(regex_str, re.IGNORECASE | re.DOTALL)
+            # prepend (?:.*) to push off the matching as much as possible
+            regex = re.compile("(?:.*)" + regex_str, re.IGNORECASE | re.DOTALL)
 
             def get_match_tuples_it():
                 def nonempty_groups(match):
