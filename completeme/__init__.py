@@ -426,12 +426,29 @@ class SearchThread(threading.Thread):
             if self.candidate_computation_complete: # if we're dealing with a complete set of candidates, cache the results
                 self.eligible_matchtuples_cache[cache_key] = eligible_matchtuples
 
+class SearchStatus(object):
+    SEARCH_STATUS_CHARS = ("|", "\\", "-", "/")
+
+    def __init__(self):
+        super(SearchStatus, self).__init__()
+        self.curr_idx = None
+        self.reset_status()
+
+    def reset_status(self):
+        self.curr_idx = 0
+
+    def get_next_status_char(self):
+        self.curr_idx = (self.curr_idx + 1) % len(self.SEARCH_STATUS_CHARS)
+        return self.SEARCH_STATUS_CHARS[self.curr_idx]
+
 def select_filename(screen, fn_collection_thread, input_str):
     highlighted_pos = 0
     key_name = None
 
     search_thread = SearchThread(input_str, fn_collection_thread.get_current_filenames())
     search_thread.start()
+
+    search_status = SearchStatus()
 
     while True:
         screen.clear()
@@ -462,12 +479,17 @@ def select_filename(screen, fn_collection_thread, input_str):
             except Exception:
                 _logger.debug("Couldn't add string to screen: {}".format(s))
 
+        if (not eligible_fns.search_complete or not curr_fns.candidate_computation_complete):
+            search_status_prefix = "{} ".format(search_status.get_next_status_char())
+        else:
+            search_status_prefix = "  "
+            search_status.reset_status()
+
         # add status bar
-        status_text = "{:d}{} of {:d}{} candidate filenames{}".format(
+        status_text = "{}{:d} of {:d} candidate filenames{}".format(
+                search_status_prefix,
                 len(eligible_fns.eligible),
-                "*" if not eligible_fns.search_complete else "",
                 len(curr_fns.candidates),
-                "*" if not curr_fns.candidate_computation_complete else "",
                 " (git: {})".format(curr_fns.git_root_dir) if curr_fns.git_root_dir is not None else "")
         add_line(STATUS_BAR_Y, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
 
@@ -483,10 +505,10 @@ def select_filename(screen, fn_collection_thread, input_str):
         # put the cursor at the end of the string
         input_x = min(len(input_str), max_width - 1)
 
-        # getch is nonblocking; try in 20ms increments for up to 200ms before redrawing screen
+        # getch is nonblocking; try in 20ms increments for up to 80ms before redrawing screen
         start_getch = time.time()
         raw_key = -1
-        while (time.time() - start_getch) < 0.200:
+        while (time.time() - start_getch) < 0.080:
             raw_key = screen.getch(INPUT_Y, input_x)
             if raw_key != -1: break
             time.sleep(0.020)
