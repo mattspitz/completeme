@@ -2,7 +2,9 @@
 completeme
 ##########
 
-completeme is a python script that'll allow you to auto-complete filenames and launch them in an editor, much like GitHub's 't' keyboard shortcut.  Rather than tab-completing to oblivion (ever worked on a Java project?), just start typing the name of the file, and when you hit enter, it'll open that file in your favorite $EDITOR.  Uses files stored in the current GitHub repository and falls back on all files below the current working directory.
+completeme is a python script that'll allow you to auto-complete filenames and launch them in an editor, much like GitHub's 't' keyboard shortcut.  Rather than tab-completing to oblivion (ever worked on a Java project?), just start typing the name of the file, and when you hit 'enter', it'll open that file in your favorite $EDITOR.  If you hit 'tab', the filename will be entered back into the command line.
+
+Uses files stored in the current GitHub repository and falls back on all files below the current working directory.
 
 **Make sure to add `source /usr/local/bin/setup_completeme_key_binding.sh` to your .bashrc to enable Ctrl+t support!**
 
