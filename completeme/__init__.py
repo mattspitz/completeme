@@ -9,14 +9,13 @@ import logging
 import os
 import Queue
 import re
-import shlex
 import subprocess
 import sys
 import threading
 import time
+import traceback
 
 import pkg_resources
-
 
 logging.basicConfig(level=logging.DEBUG if os.environ.get("DEBUG") else logging.ERROR,
                     format="%(asctime)s: %(message)s",
@@ -77,6 +76,7 @@ class FilenameCollectionThread(threading.Thread):
         super(FilenameCollectionThread, self).__init__()
         self.daemon = True
 
+        self.ex_traceback = None
         self.search_dir_queue = Queue.Queue()
         self.state_lock = threading.Lock()            # for updating shared state
 
@@ -88,41 +88,49 @@ class FilenameCollectionThread(threading.Thread):
 
         self.update_input_str(initial_input_str)
 
+    def get_traceback(self):
+        """ Returns the traceback for the exception that killed this thread. """
+        return self.ex_traceback
+
     def _interrupted(self):
         return not self.search_dir_queue.empty()
 
     def run(self):
-        while True:
-            if self.search_dir_queue.empty():
-                # don't hold the state lock until we have a queued search_dir available
-                time.sleep(0.005)
-                continue
+        try:
+            while True:
+                if self.search_dir_queue.empty():
+                    # don't hold the state lock until we have a queued search_dir available
+                    time.sleep(0.005)
+                    continue
 
-            with self.state_lock:
-                assert not self.search_dir_queue.empty()
-                # clear out the queue in case we had multiple strings queued up
-                while not self.search_dir_queue.empty():
-                    next_search_dir = self.search_dir_queue.get()
+                with self.state_lock:
+                    assert not self.search_dir_queue.empty()
+                    # clear out the queue in case we had multiple strings queued up
+                    while not self.search_dir_queue.empty():
+                        next_search_dir = self.search_dir_queue.get()
 
-                self.current_search_dir = next_search_dir
+                    self.current_search_dir = next_search_dir
 
-                # indicate that we're not done computing
-                self.candidate_computation_complete = False
+                    # indicate that we're not done computing
+                    self.candidate_computation_complete = False
 
-                # reset
-                self.candidate_fns = set()
+                    # reset
+                    self.candidate_fns = set()
 
-            try:
-                self._compute_candidates()
-            except ComputationInterruptedException:
-                _logger.debug("Candidate computation interrupted!")
-                continue
+                try:
+                    self._compute_candidates()
+                except ComputationInterruptedException:
+                    _logger.debug("Candidate computation interrupted!")
+                    continue
 
-            with self.state_lock:
-                # this set of candidate filenames is definitely done, so add it to the cache!
-                self.candidate_fns_cache[self.current_search_dir] = self.candidate_fns
-                # we're done, as long as no one has queued us up for more
-                self.candidate_computation_complete = self.search_dir_queue.empty()
+                with self.state_lock:
+                    # this set of candidate filenames is definitely done, so add it to the cache!
+                    self.candidate_fns_cache[self.current_search_dir] = self.candidate_fns
+                    # we're done, as long as no one has queued us up for more
+                    self.candidate_computation_complete = self.search_dir_queue.empty()
+        except Exception:
+            self.ex_traceback = traceback.format_exc()
+            raise
 
     def _compute_candidates(self):
         """ The actual meat of computing the candidate filenames. """
@@ -216,6 +224,8 @@ class SearchThread(threading.Thread):
         super(SearchThread, self).__init__()
         self.daemon = True
 
+        self.ex_traceback = None
+
         self.input_queue = Queue.Queue()
         self.state_lock = threading.Lock()
 
@@ -232,48 +242,56 @@ class SearchThread(threading.Thread):
 
         self.update_input(initial_input_str, initial_current_filenames)
 
+    def get_traceback(self):
+        """ Returns the traceback for the exception that killed this thread. """
+        return self.ex_traceback
+
     def _interrupted(self):
         return not self.input_queue.empty()
 
     def run(self):
-        while True:
-            if self.input_queue.empty():
-                # don't hold our state_lock until we have a queued item available
-                time.sleep(0.005)
-                continue
+        try:
+            while True:
+                if self.input_queue.empty():
+                    # don't hold our state_lock until we have a queued item available
+                    time.sleep(0.005)
+                    continue
 
-            with self.state_lock:
-                assert not self.input_queue.empty()
-                # clear out the queue in case we had a couple pile up
-                while not self.input_queue.empty():
-                    next_input = self.input_queue.get()
+                with self.state_lock:
+                    assert not self.input_queue.empty()
+                    # clear out the queue in case we had a couple pile up
+                    while not self.input_queue.empty():
+                        next_input = self.input_queue.get()
 
-                if isinstance(next_input, self.NewInput):
-                    self.input_str = next_input.input_str
-                    self.current_search_dir = next_input.current_search_dir
-                    self.candidate_fns = next_input.candidate_fns
-                    self.new_candidate_fns = None
-                    self.candidate_computation_complete = next_input.candidate_computation_complete
-                    self.eligible_matchtuples = []
+                    if isinstance(next_input, self.NewInput):
+                        self.input_str = next_input.input_str
+                        self.current_search_dir = next_input.current_search_dir
+                        self.candidate_fns = next_input.candidate_fns
+                        self.new_candidate_fns = None
+                        self.candidate_computation_complete = next_input.candidate_computation_complete
+                        self.eligible_matchtuples = []
 
-                elif isinstance(next_input, self.IncrementalInput):
-                    self.candidate_fns.update(next_input.new_candidate_fns)
-                    self.new_candidate_fns = next_input.new_candidate_fns
-                    self.candidate_computation_complete = next_input.candidate_computation_complete
+                    elif isinstance(next_input, self.IncrementalInput):
+                        self.candidate_fns.update(next_input.new_candidate_fns)
+                        self.new_candidate_fns = next_input.new_candidate_fns
+                        self.candidate_computation_complete = next_input.candidate_computation_complete
 
-                else:
-                    raise Exception("Unrecognized input!: {}".format(next_input))
+                    else:
+                        raise Exception("Unrecognized input!: {}".format(next_input))
 
-                self.search_complete = False
+                    self.search_complete = False
 
-            try:
-                self._compute_eligible_filenames()
-            except ComputationInterruptedException:
-                _logger.debug("Searching interrupted!")
-                continue
+                try:
+                    self._compute_eligible_filenames()
+                except ComputationInterruptedException:
+                    _logger.debug("Searching interrupted!")
+                    continue
 
-            with self.state_lock:
-                self.search_complete = self.input_queue.empty()
+                with self.state_lock:
+                    self.search_complete = self.input_queue.empty()
+        except Exception:
+            self.ex_traceback = traceback.format_exc()
+            raise
 
     def update_input(self, input_str, current_filenames):
         """ Queue up computation given a (possibly new) input string and the current state from the FilenameCollectionThread's get_current_filenames() . """
@@ -450,7 +468,14 @@ def select_filename(screen, fn_collection_thread, input_str):
 
     search_status = SearchStatus()
 
+    def ensure_threads_alive(*threads):
+        for th in threads:
+            if not th.is_alive():
+                raise Exception("{} died with traceback:\n{}".format(th, th.get_traceback()))
+
     while True:
+        ensure_threads_alive(fn_collection_thread, search_thread)
+
         screen.clear()
 
         fn_collection_thread.update_input_str(input_str)
