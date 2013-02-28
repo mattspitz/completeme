@@ -33,6 +33,7 @@ This software is licensed under the WtHYWv2 (Whatever the Hell You Want, v2).  P
 Thanks
 ######
 
-Thank you to all who have contributed ideas and feedback.  Special thanks to code contributors, listed below.
+Thank you to all who have contributed ideas and feedback.  Special thanks to those listed below!
 
 * Mark Steve Samson (`@marksteve <https://github.com/marksteve>`_)
+* Harold Cooper (`@hrldcpr <https://github.com/hrldcpr>`_)
