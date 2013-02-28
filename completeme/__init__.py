@@ -552,9 +552,11 @@ def select_filename(screen, fn_collection_thread, input_str):
     # something's definitely not right
     raise Exception("Should be unreachable.  Exit this function within the loop!")
 
+
+OUTPUT_SH = "/tmp/completeme.sh"
 def dump_to_prompt(fn):
     if fn:
-        with open('/tmp/completeme.sh', 'wb') as f:
+        with open(OUTPUT_SH, 'wb') as f:
             new_token = fn + " " # add a space at the end for the next argument
             print >> f, "READLINE_LINE='{}'".format(os.environ.get("READLINE_LINE", "") + new_token),
             print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(new_token))
@@ -565,8 +567,10 @@ def open_file(fn):
         if editor_cmd is None:
             raise Exception("Environment variable $EDITOR is missing!")
 
-        subprocess.call(shlex.split(editor_cmd) + [fn])
-        subprocess.call("bash -i -c 'history -s \"{} {}\"'".format(editor_cmd, fn), shell=True)
+        with open(OUTPUT_SH, "wb") as f:
+            cmd = "{} {}".format(editor_cmd, fn)
+            print >> f, cmd
+            print >> f, "history -s '{}'".format(cmd)
 
 def get_initial_input_str():
     """ Returns the string that should seed our search.
