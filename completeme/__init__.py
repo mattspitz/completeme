@@ -535,10 +535,10 @@ def select_filename(screen, fn_collection_thread, input_str):
         # put the cursor at the end of the string
         input_x = min(len(input_str), max_width - 1)
 
-        # getch is nonblocking; try in 20ms increments for up to 80ms before redrawing screen
+        # getch is nonblocking; try in 20ms increments for up to 120ms before redrawing screen
         start_getch = time.time()
         raw_key = -1
-        while (time.time() - start_getch) < 0.080:
+        while (time.time() - start_getch) < 0.120:
             raw_key = screen.getch(INPUT_Y, input_x)
             if raw_key != -1: break
             time.sleep(0.020)
