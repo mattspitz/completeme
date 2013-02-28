@@ -18,6 +18,12 @@ completeme comes with /etc/completeme.json, which you can use to, well, configur
 * *find_hidden_directories* (default=false) indicates whether we should search inside dot directories (assuming we didn't find a git repository).  These are things like .config/, .vim/, etc.
 * *find_hidden_files* (default=false) indicates whether we should find files that start with a dot (assuming we didn't find a git repository).  These are things like .emacs, .xinitrc, .DS_Store, etc.
 
+############
+Known Issues
+############
+
+* Mac OS X ships with bash 3.2, which doesn't use the READLINE_LINE or READLINE_POINT variables.  Unless you upgrade, you won't be able to use the tab-functionality to drop the filename back into the prompt!  Fortunately, `brew install bash` will give you a compatible version!
+
 #######
 License
 #######
