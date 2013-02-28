@@ -1,2 +1,3 @@
+include completeme/conf/completeme.json
 include README.rst
 include VERSION
