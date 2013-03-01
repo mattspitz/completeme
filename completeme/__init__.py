@@ -207,9 +207,9 @@ class FilenameCollectionThread(threading.Thread):
             # return all files in the current_search_dir
             find_cmd = ["find", "-L", self.current_search_dir, "-type", "f"]
             if not get_config("find_hidden_directories"):
-                find_cmd += ["-not", "-path", "'*/.*/*'"]
+                find_cmd += ["-not", "-path", "*/.*/*"]
             if not get_config("find_hidden_files"):
-                find_cmd += ["-not", "-name", "'.*'"]
+                find_cmd += ["-not", "-name", ".*"]
             append_batched_filenames(find_cmd, absolute_path=os.path.isabs(self.current_search_dir))
 
     def update_input_str(self, input_str):
