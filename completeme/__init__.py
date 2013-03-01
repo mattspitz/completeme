@@ -320,7 +320,7 @@ class SearchThread(threading.Thread):
             # so... add on an incremental search!
             with self.state_lock:
                 new_files = current_filenames.candidates.difference(self.candidate_fns)
-                _logger.debug("Adding {:d} more files to current search for input_str '{}' in directory {}.".format(len(new_files), input_str, current_filenames.current_search_dir))
+                _logger.debug("Adding {:d} more files to current search for input_str '{}' in directory {}".format(len(new_files), input_str, current_filenames.current_search_dir))
                 self.input_queue.put(self.IncrementalInput(
                     new_candidate_fns=new_files,
                     candidate_computation_complete=current_filenames.candidate_computation_complete
