@@ -412,8 +412,9 @@ class SearchThread(threading.Thread):
             # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
             # guard against user input that may be construed as a regex
             regex_str = "(.*?)".join( re.escape(ch) for ch in lowered )
-            # prepend (?:.*) to push off the matching as much as possible
-            regex = re.compile("(?:.*)" + regex_str, re.IGNORECASE | re.DOTALL)
+            filter_regex = re.compile(regex_str, re.IGNORECASE | re.DOTALL)
+            # prepend (?:.*) to push off the matching as much as possible (more expensive but more accurate)
+            ranking_regex = re.compile("(?:.*)" + regex_str, re.IGNORECASE | re.DOTALL)
 
             def get_match_tuples_it():
                 def nonempty_groups(match):
@@ -423,14 +424,15 @@ class SearchThread(threading.Thread):
                     if self._interrupted():
                         raise ComputationInterruptedException("Searching interrupted!")
 
-                    match = regex.search(fn)
-                    if match is not None:
-                        negs = nonempty_groups(match)
+                    filter_match = filter_regex.search(fn)
+                    if filter_match is not None:
+                        ranking_match = ranking_regex.search(fn)
+                        negs = nonempty_groups(ranking_match)
                         yield self.MatchTuple(
-                                string=match.string,
+                                string=fn,
                                 num_nonempty_groups = len(negs),
                                 total_group_length=len("".join(negs)),
-                                num_dirs_in_path=get_num_dirs_in_path(match.string)
+                                num_dirs_in_path=get_num_dirs_in_path(fn)
                                 )
             return list(get_match_tuples_it())
 
