@@ -49,6 +49,24 @@ def get_config(key, default="NO_DEFAULT"):
 
     return load_config()[key] if default == "NO_DEFAULT" else load_config().get(key, default)
 
+def split_search_dir_and_query(input_str):
+    """ Given an input_str, deduce what directory we should search, either by relative path (../../whatever) or by absolute path (/). """
+    # first, expand any user tildes or whatever (~/whatever, ~user/whatever)
+    dirname = os.path.expanduser(input_str)
+    query = ""
+
+    # now, peel off directories until we find one that matches
+    while dirname:
+        if os.path.isdir(dirname):
+            # we've found a directory that exists!  search here
+            return os.path.abspath(dirname), query
+        # peel back one directory, like an onion!
+        dirname, fn = os.path.split(dirname)
+        query = os.path.join(query, fn) # prepend to the query
+
+    # fall back to current directory
+    return ".", query
+
 HIGHLIGHT_COLOR_PAIR = 1
 STATUS_BAR_COLOR_PAIR = 2
 NEWLINE = "^J"
@@ -189,7 +207,7 @@ class FilenameCollectionThread(threading.Thread):
 
     def update_input_str(self, input_str):
         """ Determines the appropriate directory and queues a recompute of eligible files matching the input string. """
-        new_search_dir = self._guess_root_directory(input_str)
+        new_search_dir, _ = split_search_dir_and_query(input_str)
 
         if new_search_dir != self.current_search_dir:
             with self.state_lock:
@@ -206,13 +224,6 @@ class FilenameCollectionThread(threading.Thread):
             current_search_dir = self.current_search_dir
 
         return CurrentFilenames(candidates=candidate_fns, candidate_computation_complete=candidate_computation_complete, git_root_dir=git_root_dir, current_search_dir=current_search_dir)
-
-    def _guess_root_directory(self, input_str):
-        """ Given an input_str, deduce what directory we should search, either by relative path (../../whatever) or by absolute path (/). """
-        # TODO return whether the path is absolute (starts with /)
-        # If the path is absolute, display as absolute
-        # If the path is relative, display as relative
-        return "."
 
 EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "search_complete" ])
 class SearchThread(threading.Thread):
@@ -299,6 +310,12 @@ class SearchThread(threading.Thread):
             # nothing to update!
             return
 
+        query_search_dir, _ = split_search_dir_and_query(input_str)
+        if query_search_dir != current_filenames.current_search_dir:
+            # not ready yet!
+            _logger.debug("Next input's current search dir {} doesn't match query search dir {} -- skipping this input string.".format(current_filenames.current_search_dir, query_search_dir))
+            return
+
         if (input_str != self.input_str
                 or not self.input_queue.empty()):
             # we've got a new input str or we've already queued up input OR we're already going to trigger a new search, so make sure we've got the latest input before we start
@@ -362,13 +379,15 @@ class SearchThread(threading.Thread):
         All filenames that match the input_string are included, and we prefer those
         that match on word boundaries.
         """
-        lowered = self.input_str.lower()
+        _, query_str = split_search_dir_and_query(self.input_str)
+
+        lowered = query_str.lower()
         if len(lowered) >= 100:
             # more helpful explanation for the exception we'll get with regex.compile()
             raise Exception("python2.7 supports only 100 named groups, so this isn't going to work.  What're you doing searching for a string with >= 100 characters?")
 
         def make_cache_key(search_dir, normalized_input):
-            return (os.path.abspath(search_dir), normalized_input)
+            return (search_dir, normalized_input)
 
         cache_key = make_cache_key(self.current_search_dir, lowered)
 
@@ -379,10 +398,9 @@ class SearchThread(threading.Thread):
             count = 0
             while fn:
                 head, _ = os.path.split(fn)
-                if head:
-                    count += 1
-                else:
+                if head in ("", "/"):
                     break
+                count += 1
                 fn = head
             return count
 
