@@ -9,6 +9,7 @@ import logging
 import os
 import Queue
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -92,9 +93,9 @@ CurrentFilenames = collections.namedtuple("CurrentFilenames", [ "candidates", "c
 class FilenameCollectionThread(threading.Thread):
     def __init__(self, initial_input_str):
         super(FilenameCollectionThread, self).__init__()
-        self.daemon = True
-
+        self.shutdown = False
         self.ex_traceback = None
+
         self.search_dir_queue = Queue.Queue()
         self.state_lock = threading.Lock()            # for updating shared state
 
@@ -111,11 +112,14 @@ class FilenameCollectionThread(threading.Thread):
         return self.ex_traceback
 
     def _interrupted(self):
-        return not self.search_dir_queue.empty()
+        return self.shutdown or not self.search_dir_queue.empty()
 
     def run(self):
         try:
             while True:
+                if self.shutdown:
+                    return
+
                 if self.search_dir_queue.empty():
                     # don't hold the state lock until we have a queued search_dir available
                     time.sleep(0.005)
@@ -162,16 +166,22 @@ class FilenameCollectionThread(threading.Thread):
         with self.state_lock:
             self.git_root_dir = git_root_dir
 
-        def append_batched_filenames(shell_cmd, absolute_path=False, base_dir=None):
+        def append_batched_filenames(cmd, absolute_path=False, base_dir=None):
             """ Adds all the files from the output of this command to our candidate_fns in batches. """
             BATCH_SIZE = 100
 
-            _logger.debug("running shell cmd {}".format(shell_cmd))
-            proc = subprocess.Popen(shell_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            _logger.debug("Started cmd {} with pid {:d}".format(cmd, proc.pid))
             batch = []
             while True:
                 if self._interrupted():
-                    raise ComputationInterruptedException("Interrupted while executing: {}".format(shell_cmd))
+                    _logger.debug("Interrupted.  Killing pid {:d}.".format(proc.pid))
+                    try:
+                        proc.kill()
+                        proc.communicate()
+                    except OSError:
+                        pass
+                    raise ComputationInterruptedException("Interrupted while executing: {}".format(cmd))
 
                 nextline = proc.stdout.readline().strip()
                 if nextline == "" and proc.poll() != None:
@@ -193,8 +203,8 @@ class FilenameCollectionThread(threading.Thread):
         if self.git_root_dir is not None:
             # return all files in this git tree
             for shell_cmd in (
-                    "git ls-tree --full-tree -r HEAD" if get_config("git_entire_tree") else "git ls-tree -r HEAD",
-                    "git ls-files --exclude-standard --others"):
+                    shlex.split("git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else "")),
+                    shlex.split("git ls-files --exclude-standard --others")):
                 append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir)
         else:
             # return all files in the current_search_dir
@@ -203,7 +213,7 @@ class FilenameCollectionThread(threading.Thread):
                 find_cmd = "{} {}".format(find_cmd, "-not -path '*/.*/*'")
             if not get_config("find_hidden_files"):
                 find_cmd = "{} {}".format(find_cmd, "-not -name '.*'")
-            append_batched_filenames(find_cmd, absolute_path=os.path.isabs(self.current_search_dir))
+            append_batched_filenames(shlex.split(find_cmd), absolute_path=os.path.isabs(self.current_search_dir))
 
     def update_input_str(self, input_str):
         """ Determines the appropriate directory and queues a recompute of eligible files matching the input string. """
@@ -233,8 +243,7 @@ class SearchThread(threading.Thread):
 
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
-        self.daemon = True
-
+        self.shutdown = False
         self.ex_traceback = None
 
         self.input_queue = Queue.Queue()
@@ -258,11 +267,14 @@ class SearchThread(threading.Thread):
         return self.ex_traceback
 
     def _interrupted(self):
-        return not self.input_queue.empty()
+        return self.shutdown or not self.input_queue.empty()
 
     def run(self):
         try:
             while True:
+                if self.shutdown:
+                    return
+
                 if self.input_queue.empty():
                     # don't hold our state_lock until we have a queued item available
                     time.sleep(0.005)
@@ -484,12 +496,9 @@ class SearchStatus(object):
         self.curr_idx = (self.curr_idx + 1) % len(self.SEARCH_STATUS_CHARS)
         return self.SEARCH_STATUS_CHARS[self.curr_idx]
 
-def select_filename(screen, fn_collection_thread, input_str):
+def select_filename(screen, fn_collection_thread, search_thread, input_str):
     highlighted_pos = 0
     key_name = None
-
-    search_thread = SearchThread(input_str, fn_collection_thread.get_current_filenames())
-    search_thread.start()
 
     search_status = SearchStatus()
 
@@ -649,13 +658,24 @@ def main():
     initial_input_str = get_initial_input_str()
     fn_collection_thread = FilenameCollectionThread(initial_input_str)
     fn_collection_thread.start()
+
+    search_thread = SearchThread(initial_input_str, fn_collection_thread.get_current_filenames())
+    search_thread.start()
+
     try:
         screen = init_screen()
-        select_filename(screen, fn_collection_thread, initial_input_str)
+        select_filename(screen, fn_collection_thread, search_thread, initial_input_str)
     except KeyboardInterrupt:
         pass
     finally:
         cleanup_curses()
+        fn_collection_thread.shutdown = True
+        search_thread.shutdown = True
+        _logger.debug("Shutdown signalled to threads.")
+
+        fn_collection_thread.join()
+        search_thread.join()
+        _logger.debug("Threads joined.")
 
 if __name__ == "__main__":
     if os.environ.get("RUN_PROFILER"):
