@@ -166,11 +166,11 @@ class FilenameCollectionThread(threading.Thread):
         with self.state_lock:
             self.git_root_dir = git_root_dir
 
-        def append_batched_filenames(cmd, absolute_path=False, base_dir=None):
+        def append_batched_filenames(cmd, absolute_path=False, base_dir=None, shell=False):
             """ Adds all the files from the output of this command to our candidate_fns in batches. """
             BATCH_SIZE = 100
 
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            proc = subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _logger.debug("Started cmd {} with pid {:d}".format(cmd, proc.pid))
             batch = []
             while True:
@@ -203,9 +203,9 @@ class FilenameCollectionThread(threading.Thread):
         if self.git_root_dir is not None:
             # return all files in this git tree
             for shell_cmd in (
-                    shlex.split("git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else "")),
-                    shlex.split("git ls-files --exclude-standard --others")):
-                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir)
+                    "git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else ""),
+                    "git ls-files --exclude-standard --others"):
+                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True)
         else:
             # return all files in the current_search_dir
             find_cmd = "find -L {} -type f".format(self.current_search_dir)
