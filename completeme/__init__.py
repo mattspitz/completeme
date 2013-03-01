@@ -193,7 +193,7 @@ class FilenameCollectionThread(threading.Thread):
 
         if new_search_dir != self.current_search_dir:
             with self.state_lock:
-                _logger.debug("Switching search directory from {} to {}.".format(self.current_search_dir, new_search_dir))
+                _logger.debug("Switching search directory from {} to {}".format(self.current_search_dir, new_search_dir))
                 self.search_dir_queue.put(new_search_dir)
 
     def get_current_filenames(self):
