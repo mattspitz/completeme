@@ -93,7 +93,7 @@ CurrentFilenames = collections.namedtuple("CurrentFilenames", [ "candidates", "c
 class FilenameCollectionThread(threading.Thread):
     def __init__(self, initial_input_str):
         super(FilenameCollectionThread, self).__init__()
-        self.shutdown = False
+        self.daemon = True
         self.ex_traceback = None
 
         self.search_dir_queue = Queue.Queue()
@@ -112,14 +112,11 @@ class FilenameCollectionThread(threading.Thread):
         return self.ex_traceback
 
     def _interrupted(self):
-        return self.shutdown or not self.search_dir_queue.empty()
+        return not self.search_dir_queue.empty()
 
     def run(self):
         try:
             while True:
-                if self.shutdown:
-                    return
-
                 if self.search_dir_queue.empty():
                     # don't hold the state lock until we have a queued search_dir available
                     time.sleep(0.005)
@@ -243,7 +240,7 @@ class SearchThread(threading.Thread):
 
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
-        self.shutdown = False
+        self.daemon = True
         self.ex_traceback = None
 
         self.input_queue = Queue.Queue()
@@ -267,14 +264,11 @@ class SearchThread(threading.Thread):
         return self.ex_traceback
 
     def _interrupted(self):
-        return self.shutdown or not self.input_queue.empty()
+        return not self.input_queue.empty()
 
     def run(self):
         try:
             while True:
-                if self.shutdown:
-                    return
-
                 if self.input_queue.empty():
                     # don't hold our state_lock until we have a queued item available
                     time.sleep(0.005)
@@ -669,13 +663,6 @@ def main():
         pass
     finally:
         cleanup_curses()
-        fn_collection_thread.shutdown = True
-        search_thread.shutdown = True
-        _logger.debug("Shutdown signalled to threads.")
-
-        fn_collection_thread.join()
-        search_thread.join()
-        _logger.debug("Threads joined.")
 
 if __name__ == "__main__":
     if os.environ.get("RUN_PROFILER"):
