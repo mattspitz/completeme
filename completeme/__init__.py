@@ -205,12 +205,12 @@ class FilenameCollectionThread(threading.Thread):
                 append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True)
         else:
             # return all files in the current_search_dir
-            find_cmd = "find -L {} -type f".format(_shellquote(self.current_search_dir))
+            find_cmd = ["find", "-L", self.current_search_dir, "-type", "f"]
             if not get_config("find_hidden_directories"):
-                find_cmd = "{} {}".format(find_cmd, "-not -path '*/.*/*'")
+                find_cmd += ["-not", "-path", "'*/.*/*'"]
             if not get_config("find_hidden_files"):
-                find_cmd = "{} {}".format(find_cmd, "-not -name '.*'")
-            append_batched_filenames(shlex.split(find_cmd), absolute_path=os.path.isabs(self.current_search_dir))
+                find_cmd += ["-not", "-name", "'.*'"]
+            append_batched_filenames(find_cmd, absolute_path=os.path.isabs(self.current_search_dir))
 
     def update_input_str(self, input_str):
         """ Determines the appropriate directory and queues a recompute of eligible files matching the input string. """
