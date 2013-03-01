@@ -208,7 +208,7 @@ class FilenameCollectionThread(threading.Thread):
                 append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True)
         else:
             # return all files in the current_search_dir
-            find_cmd = "find -L {} -type f".format(self.current_search_dir)
+            find_cmd = "find -L {} -type f".format(_shellquote(self.current_search_dir))
             if not get_config("find_hidden_directories"):
                 find_cmd = "{} {}".format(find_cmd, "-not -path '*/.*/*'")
             if not get_config("find_hidden_files"):
