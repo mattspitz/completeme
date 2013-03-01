@@ -473,11 +473,19 @@ def select_filename(screen, fn_collection_thread, input_str):
 
     search_status = SearchStatus()
 
+    def get_display_uuid(input_str, curr_fns, eligible_fns):
+        """ Returns a unique id to represent what we're currently displaying on the screen.  Useful for us to block if we're not showing anything new. """
+        return hash("".join(map(str,[
+            input_str,
+            curr_fns.candidate_computation_complete, curr_fns.current_search_dir, len(curr_fns.candidates),
+            eligible_fns.search_complete, len(eligible_fns.eligible) ])))
+
     def ensure_threads_alive(*threads):
         for th in threads:
             if not th.is_alive():
                 raise Exception("{} died with traceback:\n{}".format(th, th.get_traceback()))
 
+    prev_display_uuid = None
     while True:
         ensure_threads_alive(fn_collection_thread, search_thread)
 
@@ -535,10 +543,14 @@ def select_filename(screen, fn_collection_thread, input_str):
         # put the cursor at the end of the string
         input_x = min(len(input_str), max_width - 1)
 
-        # getch is nonblocking; try in 20ms increments for up to 120ms before redrawing screen
+        # getch is nonblocking; try in 20ms increments for up to 120ms before redrawing screen (60s if we know the screen won't change without input)
+        new_display_uuid = get_display_uuid(input_str, curr_fns, eligible_fns)
+        getch_time = 60 if new_display_uuid == prev_display_uuid and curr_fns.candidate_computation_complete and eligible_fns.search_complete else 0.120
+        prev_display_uuid = new_display_uuid
+
         start_getch = time.time()
         raw_key = -1
-        while (time.time() - start_getch) < 0.120:
+        while (time.time() - start_getch) < getch_time:
             raw_key = screen.getch(INPUT_Y, input_x)
             if raw_key != -1: break
             time.sleep(0.020)
