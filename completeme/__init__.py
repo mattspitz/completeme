@@ -42,6 +42,7 @@ def get_config(key, default="NO_DEFAULT"):
             try:
                 cfg = json.load(open(fn, "r"))
                 setattr(get_config, CONFIG_CACHE_KEY, cfg)
+                _logger.debug("Loaded config at {:s}.".format(fn))
                 return cfg
             except IOError:
                 pass
@@ -163,7 +164,7 @@ class FilenameCollectionThread(threading.Thread):
         with self.state_lock:
             self.git_root_dir = git_root_dir
 
-        def append_batched_filenames(cmd, absolute_path=False, base_dir=None, shell=False):
+        def append_batched_filenames(cmd, absolute_path=False, base_dir=None, shell=False, add_dirnames=False, append_trailing_slash=False):
             """ Adds all the files from the output of this command to our candidate_fns in batches. """
             BATCH_SIZE = 100
 
@@ -172,7 +173,7 @@ class FilenameCollectionThread(threading.Thread):
             batch = []
             while True:
                 if self._interrupted():
-                    _logger.debug("Interrupted.  Killing pid {:d}.".format(proc.pid))
+                    _logger.debug("Command interrupted.  Killing pid {:d}.".format(proc.pid))
                     try:
                         proc.kill()
                         proc.communicate()
@@ -185,7 +186,19 @@ class FilenameCollectionThread(threading.Thread):
                     break
 
                 fn = os.path.join(base_dir, nextline) if base_dir is not None else nextline
-                batch.append(os.path.abspath(fn) if absolute_path else os.path.relpath(fn))
+                if not fn:
+                    continue
+
+                display_fn = os.path.abspath(fn) if absolute_path else os.path.relpath(fn)
+                if append_trailing_slash and not display_fn.endswith("/"):
+                    batch.append(display_fn + "/")
+                else:
+                    batch.append(display_fn)
+
+                if add_dirnames:
+                    dirname = os.path.dirname(display_fn)
+                    if dirname not in ("", "/"):
+                        batch.append(dirname + "/")
 
                 if len(batch) >= BATCH_SIZE:
                     with self.state_lock:
@@ -202,15 +215,18 @@ class FilenameCollectionThread(threading.Thread):
             for shell_cmd in (
                     "git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else ""),
                     "git ls-files --exclude-standard --others"):
-                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True)
+                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True, add_dirnames=get_config("include_directories"))
         else:
             # return all files in the current_search_dir
-            find_cmd = ["find", "-L", self.current_search_dir, "-type", "f"]
+            find_cmd = ["find", "-L", self.current_search_dir]
             if not get_config("find_hidden_directories"):
                 find_cmd += ["-not", "-path", "*/.*/*"]
             if not get_config("find_hidden_files"):
                 find_cmd += ["-not", "-name", ".*"]
-            append_batched_filenames(find_cmd, absolute_path=os.path.isabs(self.current_search_dir))
+
+            if get_config("include_directories"):
+                append_batched_filenames(find_cmd + ["-type", "d"], absolute_path=os.path.isabs(self.current_search_dir), append_trailing_slash=True)
+            append_batched_filenames(find_cmd + ["-type", "f"], absolute_path=os.path.isabs(self.current_search_dir))
 
     def update_input_str(self, input_str):
         """ Determines the appropriate directory and queues a recompute of eligible files matching the input string. """
@@ -402,12 +418,15 @@ class SearchThread(threading.Thread):
 
         def get_num_dirs_in_path(fn):
             count = 0
+            initial_val, last_val = fn, None
             while fn:
                 head, _ = os.path.split(fn)
                 if head in ("", "/"):
                     break
                 count += 1
                 fn = head
+                if fn == last_val: raise Exception("Hit infinite loop while computing dirs for {}!".format(initial_val))
+                last_val = fn
             return count
 
         def perform_search():
