@@ -58,16 +58,18 @@ def split_search_dir_and_query(input_str, git_root_dir=None):
         # first, expand any user tildes or whatever (~/whatever, ~user/whatever)
         dirname = os.path.expanduser(input_str)
         query = ""
+        is_first = True # the whole input string must end in a slash to be checked for a directory
 
         # now, peel off directories until we find one that matches
         while dirname:
-            if os.path.isdir(dirname):
+            if (os.path.isdir(dirname) and (not is_first or dirname.endswith("/"))):
                 # we've found a directory that exists!  search here
                 return os.path.abspath(dirname), query
 
             # peel back one directory, like an onion!
             dirname, fn = os.path.split(dirname)
             query = os.path.join(query, fn) # prepend to the query
+            is_first = False
 
         # fall back to current directory
         return os.path.abspath("."), query
