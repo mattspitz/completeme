@@ -51,23 +51,35 @@ def get_config(key, default="NO_DEFAULT"):
 
     return load_config()[key] if default == "NO_DEFAULT" else load_config().get(key, default)
 
-def split_search_dir_and_query(input_str):
+def split_search_dir_and_query(input_str, git_root_dir=None):
     """ Given an input_str, deduce what directory we should search, either by relative path (../../whatever) or by absolute path (/). """
-    # first, expand any user tildes or whatever (~/whatever, ~user/whatever)
-    dirname = os.path.expanduser(input_str)
-    query = ""
 
-    # now, peel off directories until we find one that matches
-    while dirname:
-        if os.path.isdir(dirname):
-            # we've found a directory that exists!  search here
-            return os.path.abspath(dirname), query
-        # peel back one directory, like an onion!
-        dirname, fn = os.path.split(dirname)
-        query = os.path.join(query, fn) # prepend to the query
+    def get_abspath_and_query():
+        # first, expand any user tildes or whatever (~/whatever, ~user/whatever)
+        dirname = os.path.expanduser(input_str)
+        query = ""
 
-    # fall back to current directory
-    return os.path.abspath("."), query
+        # now, peel off directories until we find one that matches
+        while dirname:
+            if os.path.isdir(dirname):
+                # we've found a directory that exists!  search here
+                return os.path.abspath(dirname), query
+
+            # peel back one directory, like an onion!
+            dirname, fn = os.path.split(dirname)
+            query = os.path.join(query, fn) # prepend to the query
+
+        # fall back to current directory
+        return os.path.abspath("."), query
+
+    abs_path, query = get_abspath_and_query()
+    if git_root_dir is not None and get_config("git_entire_tree"):
+        # if we're searching the whole git directory anyway, don't treat this as a new search!
+        git_abs_path = os.path.abspath(git_root_dir)
+        if abs_path.startswith(git_abs_path):
+            splitpoint = len(git_abs_path) + 1 # include the slash that follows the directory!
+            return abs_path[:splitpoint], os.path.join(abs_path[splitpoint:], query)
+    return abs_path, query
 
 HIGHLIGHT_COLOR_PAIR = 1
 STATUS_BAR_COLOR_PAIR = 2
@@ -265,7 +277,7 @@ class FilenameCollectionThread(threading.Thread):
 
 EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "search_complete" ])
 class SearchThread(threading.Thread):
-    NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "candidate_fns", "candidate_computation_complete" ])
+    NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "git_root_dir", "candidate_fns", "candidate_computation_complete" ])
     IncrementalInput = collections.namedtuple("IncrementalInput", [ "new_candidate_fns", "candidate_computation_complete" ])
     MatchTuple = collections.namedtuple("MatchTuple", ["string", "num_nonempty_groups", "total_group_length", "num_dirs_in_path" ])
 
@@ -279,6 +291,7 @@ class SearchThread(threading.Thread):
 
         self.input_str = None
         self.current_search_dir = None
+        self.git_root_dir = None
         self.new_candidate_fns = None               # used for incremental search
         self.candidate_fns = None
         self.candidate_computation_complete = None
@@ -314,6 +327,7 @@ class SearchThread(threading.Thread):
                     if isinstance(next_input, self.NewInput):
                         self.input_str = next_input.input_str
                         self.current_search_dir = next_input.current_search_dir
+                        self.git_root_dir = next_input.git_root_dir
                         self.candidate_fns = next_input.candidate_fns
                         self.new_candidate_fns = None
                         self.candidate_computation_complete = next_input.candidate_computation_complete
@@ -347,10 +361,12 @@ class SearchThread(threading.Thread):
             # nothing to update!
             return
 
-        query_search_dir, _ = split_search_dir_and_query(input_str)
-        if query_search_dir != current_filenames.current_search_dir:
+        query_search_dir, _ = split_search_dir_and_query(input_str, git_root_dir=current_filenames.git_root_dir)
+
+        effective_search_dir = current_filenames.current_search_dir if (current_filenames.git_root_dir is None or not get_config("git_entire_tree")) else current_filenames.git_root_dir
+        if os.path.abspath(query_search_dir) != os.path.abspath(effective_search_dir): # abspath rids us of incosistent trailing slashes
             # not ready yet!
-            _logger.debug("Next input's current search dir {} doesn't match query search dir {} -- skipping this input string.".format(current_filenames.current_search_dir, query_search_dir))
+            _logger.debug("Next input's effective search dir {} doesn't match query search dir {} -- skipping this input string.".format(effective_search_dir, query_search_dir))
             return
 
         if (input_str != self.input_str
@@ -361,6 +377,7 @@ class SearchThread(threading.Thread):
                 self.input_queue.put(self.NewInput(
                     input_str=input_str,
                     current_search_dir=current_filenames.current_search_dir,
+                    git_root_dir=current_filenames.git_root_dir,
                     candidate_fns=current_filenames.candidates,
                     candidate_computation_complete=current_filenames.candidate_computation_complete
                     ))
@@ -416,7 +433,7 @@ class SearchThread(threading.Thread):
         All filenames that match the input_string are included, and we prefer those
         that match on word boundaries.
         """
-        _, query_str = split_search_dir_and_query(self.input_str)
+        _, query_str = split_search_dir_and_query(self.input_str, self.git_root_dir)
 
         lowered = query_str.lower()
         if len(lowered) >= 100:
