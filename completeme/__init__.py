@@ -145,12 +145,20 @@ class FilenameCollectionThread(threading.Thread):
 
                 with self.state_lock:
                     # this set of candidate filenames is definitely done, so add it to the cache!
-                    self.candidate_fns_cache[self.current_search_dir] = self.candidate_fns
+                    self.candidate_fns_cache[self._make_candidate_fn_cache_key(self.current_search_dir, self.git_root_dir)] = self.candidate_fns
+
                     # we're done, as long as no one has queued us up for more
                     self.candidate_computation_complete = self.search_dir_queue.empty()
         except Exception:
             self.ex_traceback = traceback.format_exc()
             raise
+
+    def _make_candidate_fn_cache_key(self, current_search_dir, git_root_dir):
+        """ If we have a git directory and we're considering the whole tree, don't start a "new" candidate search! """
+        if git_root_dir is not None and get_config("git_entire_tree"):
+            return "GIT_ROOT:" + git_root_dir
+        else:
+            return "ROOT:" + current_search_dir
 
     def _compute_candidates(self):
         """ The actual meat of computing the candidate filenames. """
@@ -210,12 +218,19 @@ class FilenameCollectionThread(threading.Thread):
                     # clean up the stragglers
                     self.candidate_fns.update(batch)
 
-        if self.git_root_dir is not None:
+        cache_key = self._make_candidate_fn_cache_key(self.current_search_dir, self.git_root_dir)
+        if cache_key in self.candidate_fns_cache:
+            _logger.debug("Found candidate_fn cache key: {}".format(cache_key))
+            with self.state_lock:
+                self.candidate_fns.update(self.candidate_fns_cache[cache_key])
+
+        elif self.git_root_dir is not None:
             # return all files in this git tree
             for shell_cmd in (
                     "git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else ""),
                     "git ls-files --exclude-standard --others"):
                 append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True, add_dirnames=get_config("include_directories"))
+
         else:
             # return all files in the current_search_dir
             find_cmd = ["find", "-L", self.current_search_dir]
