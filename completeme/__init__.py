@@ -67,7 +67,7 @@ def split_search_dir_and_query(input_str):
         query = os.path.join(query, fn) # prepend to the query
 
     # fall back to current directory
-    return ".", query
+    return os.path.abspath("."), query
 
 HIGHLIGHT_COLOR_PAIR = 1
 STATUS_BAR_COLOR_PAIR = 2

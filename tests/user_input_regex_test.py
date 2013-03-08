@@ -7,10 +7,6 @@ import completeme
 
 class UserInputRegexTest(unittest.TestCase):
 
-    def setUp(self):
-        """ Always wipe out the eligible filenames cache. """
-        completeme.ELIGIBLE_FILENAMES_CACHE = {}
-
     def compute_eligible_filenames(self, input_str, candidates):
         """ Helper for spinning up a thread and waiting for results. """
 
@@ -19,8 +15,9 @@ class UserInputRegexTest(unittest.TestCase):
                 completeme.CurrentFilenames(
                     candidates=candidates,
                     candidate_computation_complete=True,
-                    current_search_dir=".",
-                    git_root_dir="."))
+                    current_search_dir=os.path.abspath("."),
+                    git_root_dir=None)
+                )
         bg_thread.start()
 
         start = time.time()
@@ -58,7 +55,6 @@ class UserInputRegexTest(unittest.TestCase):
         run_test("*", [SPACE_ASTERISK_QUESTION_DOT])
         run_test("?", [SPACE_QUESTION_DOT, SPACE_ASTERISK_QUESTION_DOT])
         run_test(".", ELIGIBLE_FILENAMES)
-        run_test("/", [SPACE_QUESTION_DOT, NORMAL_DIR])
         run_test("?.", [SPACE_QUESTION_DOT, SPACE_ASTERISK_QUESTION_DOT])
         run_test(".?", [])
         run_test("[.*]", [])
