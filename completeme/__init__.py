@@ -106,6 +106,10 @@ def cleanup_curses():
 class ComputationInterruptedException(Exception):
     pass
 
+class UNINITIALIZED(object):
+    def __init__(self):
+        raise NotImplementedError("Don't use this class for reals.  It's a sentinel.")
+
 CurrentFilenames = collections.namedtuple("CurrentFilenames", [ "candidates", "candidate_computation_complete", "git_root_dir", "current_search_dir" ])
 class FilenameCollectionThread(threading.Thread):
     def __init__(self, initial_input_str):
@@ -119,8 +123,8 @@ class FilenameCollectionThread(threading.Thread):
         self.current_search_dir = None                # only re-run find/git if the search directory changes
         self.candidate_computation_complete = False   # are we done getting all filenames for the current search directory?
         self.candidate_fns_cache = {}                 # cache for candidate filenames given an input_str
-        self.candidate_fns = set()                    # current set of candidate functions
-        self.git_root_dir = None                      # git root directory
+        self.candidate_fns = UNINITIALIZED            # current set of candidate functions
+        self.git_root_dir = UNINITIALIZED             # git root directory
 
         self.update_input_str(initial_input_str)
 
@@ -130,6 +134,11 @@ class FilenameCollectionThread(threading.Thread):
 
     def _interrupted(self):
         return not self.search_dir_queue.empty()
+
+    def state_is_consistent(self):
+        """ Returns true if the state of this thread is consistent enough to trust the results.  That is, the filenames returned and the metadata (git_root_dir) are in sync. """
+        with self.state_lock:
+            return self.git_root_dir != UNINITIALIZED and self.candidate_fns != UNINITIALIZED
 
     def run(self):
         try:
@@ -216,7 +225,7 @@ class FilenameCollectionThread(threading.Thread):
                 abs_fn = os.path.abspath(fn)
                 if add_dirnames:
                     def add_dirs_rec(name):
-                        if name != self.current_search_dir and name not in batch:
+                        if name != (self.git_root_dir or self.current_search_dir) and name not in batch:
                             batch.add(name)
                             add_dirs_rec(os.path.dirname(name))
                     add_dirs_rec(abs_fn)
@@ -533,8 +542,9 @@ class SearchThread(threading.Thread):
                     if idx % LOCK_BATCH_SIZE == 0 and self._interrupted():
                         raise ComputationInterruptedException("Searching interrupted!")
 
-                    assert abs_fn.startswith(self.current_search_dir)
-                    trimmed_fn = abs_fn[len(self.current_search_dir):]
+                    common_prefix = self.git_root_dir or self.current_search_dir
+                    assert abs_fn.startswith(common_prefix), "expected {} to start with {}!".format(abs_fn, common_prefix)
+                    trimmed_fn = abs_fn[len(common_prefix):]
 
                     if filter_regex is not None:
                         filter_match = filter_regex.search(trimmed_fn)
@@ -770,6 +780,9 @@ def main():
     initial_input_str = get_initial_input_str()
     fn_collection_thread = FilenameCollectionThread(initial_input_str)
     fn_collection_thread.start()
+
+    while not fn_collection_thread.state_is_consistent():
+        time.sleep(0.002)
 
     search_thread = SearchThread(initial_input_str, fn_collection_thread.get_current_filenames())
     search_thread.start()
