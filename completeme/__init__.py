@@ -410,6 +410,33 @@ class SearchThread(threading.Thread):
 
     @staticmethod
     def _matchtuple_cmp(match_one, match_two):
+        """ TODO!
+        first, obviously, best match (num_nonempty_groups, total_group_length)
+
+        then...
+        prefer children of the cwd (is_child_of_cwd = True)
+
+        prefer files in this directory (num_dirs_in_path==0)
+
+        prefer all directories in this directory, followed by their filenames (recursively)
+        e.g.
+            a/
+            a/stuff.txt
+            a/b/
+            a/b/c/
+            a/b/c/things.dat
+            a/b/c/zebras.zoo
+            x/
+            x/stuff.txt
+            x/y/
+            x/y/z/
+            x/y/z/wowza.txt
+
+        finally, compare the LOWERED filenames (README < hithere.txt)
+
+        Note: maybe we'll need to keep track of all the directory names in the path when we create the matchtuple?
+        """
+
         # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
 
         # (more nonempty groups -> show up later in the list)
