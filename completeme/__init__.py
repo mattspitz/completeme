@@ -68,19 +68,21 @@ def split_search_dir_and_query(input_str, git_root_dir=None):
 
             # peel back one directory, like an onion!
             dirname, fn = os.path.split(dirname)
-            query = os.path.join(query, fn) # prepend to the query
+             # prepend to the query
+            query = os.path.join(fn, query) if query != "" else fn
             is_first = False
 
         # fall back to current directory
         return os.path.abspath("."), query
 
     abs_path, query = get_abspath_and_query()
+
     if git_root_dir is not None and get_config("git_entire_tree"):
         # if we're searching the whole git directory anyway, don't treat this as a new search!
         git_abs_path = os.path.abspath(git_root_dir)
         if abs_path.startswith(git_abs_path):
-            splitpoint = len(git_abs_path) + 1 # include the slash that follows the directory!
-            return abs_path[:splitpoint], os.path.join(abs_path[splitpoint:], query)
+            remaindir = abs_path[(len(git_abs_path) + 1):] # include the slash that follows the directory!
+            return git_abs_path, os.path.join(remaindir, query)
     return abs_path, query
 
 HIGHLIGHT_COLOR_PAIR = 1
@@ -186,7 +188,7 @@ class FilenameCollectionThread(threading.Thread):
         with self.state_lock:
             self.git_root_dir = git_root_dir
 
-        def append_batched_filenames(cmd, absolute_path=False, base_dir=None, shell=False, add_dirnames=False, append_trailing_slash=False):
+        def append_batched_filenames(cmd, base_dir=None, shell=False, add_dirnames=False, append_trailing_slash=False):
             """ Adds all the files from the output of this command to our candidate_fns in batches. """
             BATCH_SIZE = 100
 
@@ -211,7 +213,7 @@ class FilenameCollectionThread(threading.Thread):
                 if not fn:
                     continue
 
-                display_fn = os.path.abspath(fn) if absolute_path else os.path.relpath(fn)
+                display_fn = os.path.abspath(fn)
                 if append_trailing_slash and not display_fn.endswith("/"):
                     batch.append(display_fn + "/")
                 else:
@@ -240,10 +242,10 @@ class FilenameCollectionThread(threading.Thread):
 
         elif self.git_root_dir is not None:
             # return all files in this git tree
-            for shell_cmd in (
-                    "git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else ""),
-                    "git ls-files --exclude-standard --others"):
-                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True, add_dirnames=get_config("include_directories"))
+            for base_dir, shell_cmd in (
+                    (self.git_root_dir, "git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else "")),
+                    (None, "git ls-files --exclude-standard --others")):
+                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=base_dir, shell=True, add_dirnames=get_config("include_directories"))
 
         else:
             # return all files in the current_search_dir
@@ -254,8 +256,8 @@ class FilenameCollectionThread(threading.Thread):
                 find_cmd += ["-not", "-name", ".*"]
 
             if get_config("include_directories"):
-                append_batched_filenames(find_cmd + ["-type", "d"], absolute_path=os.path.isabs(self.current_search_dir), append_trailing_slash=True)
-            append_batched_filenames(find_cmd + ["-type", "f"], absolute_path=os.path.isabs(self.current_search_dir))
+                append_batched_filenames(find_cmd + ["-type", "d"], append_trailing_slash=True)
+            append_batched_filenames(find_cmd + ["-type", "f"])
 
     def update_input_str(self, input_str):
         """ Determines the appropriate directory and queues a recompute of eligible files matching the input string. """
