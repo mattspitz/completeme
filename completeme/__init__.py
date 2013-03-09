@@ -280,7 +280,7 @@ EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "s
 class SearchThread(threading.Thread):
     NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "git_root_dir", "candidate_fns", "candidate_computation_complete" ])
     IncrementalInput = collections.namedtuple("IncrementalInput", [ "new_candidate_fns", "candidate_computation_complete" ])
-    MatchTuple = collections.namedtuple("MatchTuple", ["string", "num_nonempty_groups", "total_group_length", "num_dirs_in_path", "is_child_of_cwd", "is_dir" ])
+    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path", "is_child_of_cwd", "is_dir" ])
 
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
@@ -401,7 +401,7 @@ class SearchThread(threading.Thread):
     def get_eligible_filenames(self):
         """ Retrieve a current snapshot of what we think are the current eligible filenames. """
         with self.state_lock:
-            eligible_fns = [ match.string for match in self.eligible_matchtuples ]
+            eligible_fns = [ match.abs_fn for match in self.eligible_matchtuples ]
             search_complete = self.search_complete
 
         return EligibleFilenames(eligible=eligible_fns, search_complete=search_complete)
@@ -436,7 +436,7 @@ class SearchThread(threading.Thread):
             return diff
 
         # and finally in lexicographical order
-        return cmp(match_one.string, match_two.string)
+        return cmp(match_one.match_str, match_two.match_str)
 
     def _compute_eligible_filenames(self):
         """ Return a sorted ordering of the filenames based on this input string.
@@ -459,18 +459,17 @@ class SearchThread(threading.Thread):
         def is_incremental_search():
             return self.new_candidate_fns is not None
 
-        def get_num_dirs_in_path(abs_fn):
+        def get_num_dirs_in_path(fn):
             count = 0
-            rel_fn = os.path.relpath(abs_fn)
-            initial_val, last_val = rel_fn, None
-            while rel_fn:
-                head, _ = os.path.split(rel_fn)
+            initial_val, last_val = fn, None
+            while fn:
+                head, _ = os.path.split(fn)
                 if head in ("", "/"):
                     break
                 count += 1
-                rel_fn = head
-                if rel_fn == last_val: raise Exception("Hit infinite loop while computing dirs for {}!".format(initial_val))
-                last_val = rel_fn
+                fn = head
+                if fn == last_val: raise Exception("Hit infinite loop while computing dirs for {}!".format(initial_val))
+                last_val = fn
             return count
 
         def is_child_of_cwd(abs_fn):
@@ -488,45 +487,56 @@ class SearchThread(threading.Thread):
                 # no need to prune down the whole list if we've already limited the search space
                 prev_cache_key = make_cache_key(self.current_search_dir, lowered[:-1])
                 if len(lowered) >= 2 and prev_cache_key in self.eligible_matchtuples_cache:
-                    initial_filenames = [ match.string for match in self.eligible_matchtuples_cache[prev_cache_key] ]
+                    initial_filenames = [ match.abs_fn for match in self.eligible_matchtuples_cache[prev_cache_key] ]
                 else:
                     initial_filenames = self.candidate_fns
 
             _logger.debug("Searching {:d} files for '{}'{}".format(len(initial_filenames), lowered, " (incremental!)" if is_incremental_search() else ""))
 
-            if lowered == "":
-                _logger.debug("Returning all candidates for empty input str.")
-                return [ self.MatchTuple(string=fn, num_nonempty_groups=0, total_group_length=0, num_dirs_in_path=get_num_dirs_in_path(fn), is_child_of_cwd=is_child_of_cwd(fn), is_dir=os.path.isdir(fn)) for fn in initial_filenames ]
-
-
-            # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
-            # guard against user input that may be construed as a regex
-            regex_str = "(.*?)".join( re.escape(ch) for ch in lowered )
-            filter_regex = re.compile(regex_str, re.IGNORECASE | re.DOTALL)
-            # prepend (?:.*) to push off the matching as much as possible (more expensive but more accurate)
-            ranking_regex = re.compile("(?:.*)" + regex_str, re.IGNORECASE | re.DOTALL)
-
-            def get_match_tuples_it():
+            def get_match_tuples_it(filter_regex=None, ranking_regex=None):
                 def nonempty_groups(match):
                     return filter(lambda x: x, match.groups())
 
-                for fn in initial_filenames:
-                    if self._interrupted():
+                assert (filter_regex is not None and ranking_regex is not None) or (filter_regex is None and ranking_regex is None)
+
+                for abs_fn in initial_filenames:
+                    if self._interrupted(): # TODO only do this in batches(?)
                         raise ComputationInterruptedException("Searching interrupted!")
 
-                    filter_match = filter_regex.search(fn)
-                    if filter_match is not None:
-                        ranking_match = ranking_regex.search(fn)
+                    assert abs_fn.startswith(self.current_search_dir)
+                    trimmed_fn = abs_fn[len(self.current_search_dir):]
+
+                    if filter_regex is not None:
+                        filter_match = filter_regex.search(trimmed_fn)
+
+                        if filter_match is None:
+                            continue
+                        ranking_match = ranking_regex.search(trimmed_fn)
                         negs = nonempty_groups(ranking_match)
-                        yield self.MatchTuple(
-                                string=fn,
-                                num_nonempty_groups = len(negs),
-                                total_group_length=len("".join(negs)),
-                                num_dirs_in_path=get_num_dirs_in_path(fn),
-                                is_child_of_cwd=is_child_of_cwd(fn),
-                                is_dir=os.path.isdir(fn)
-                                )
-            return list(get_match_tuples_it())
+                    else:
+                        negs = []
+
+                    yield self.MatchTuple(
+                            abs_fn=abs_fn,
+                            match_str=trimmed_fn,
+                            num_nonempty_groups = len(negs),
+                            total_group_length=len("".join(negs)),
+                            num_dirs_in_path=get_num_dirs_in_path(trimmed_fn),
+                            is_child_of_cwd=is_child_of_cwd(abs_fn),
+                            is_dir=os.path.isdir(abs_fn)
+                            )
+            if lowered == "":
+                _logger.debug("Returning all candidates for empty input str.")
+                return list(get_match_tuples_it())
+            else:
+                # fuzzy matching: for input string abc, find a*b*c substrings (consuming as few characters as possible in between)
+                # guard against user input that may be construed as a regex
+                regex_str = "(.*?)".join( re.escape(ch) for ch in lowered )
+                filter_regex = re.compile(regex_str, re.IGNORECASE | re.DOTALL)
+                # prepend (?:.*) to push off the matching as much as possible (more expensive but more accurate)
+                ranking_regex = re.compile("(?:.*)" + regex_str, re.IGNORECASE | re.DOTALL)
+
+                return list(get_match_tuples_it(filter_regex=filter_regex, ranking_regex=ranking_regex))
 
         if is_incremental_search():
             eligible_matchtuples = self.eligible_matchtuples + perform_search()
