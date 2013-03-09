@@ -194,7 +194,7 @@ class FilenameCollectionThread(threading.Thread):
 
             proc = subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _logger.debug("Started cmd {} with pid {:d}".format(cmd, proc.pid))
-            batch = []
+            batch = set()
             while True:
                 if self._interrupted():
                     _logger.debug("Command interrupted.  Killing pid {:d}.".format(proc.pid))
@@ -214,17 +214,19 @@ class FilenameCollectionThread(threading.Thread):
                     continue
 
                 abs_fn = os.path.abspath(fn)
-                batch.append(abs_fn)
-
                 if add_dirnames:
-                    dirname = os.path.dirname(abs_fn)
-                    if dirname != "/":
-                        batch.append(dirname)
+                    def add_dirs_rec(name):
+                        if name != self.current_search_dir and name not in batch:
+                            batch.add(name)
+                            add_dirs_rec(os.path.dirname(name))
+                    add_dirs_rec(abs_fn)
+                else:
+                    batch.add(abs_fn)
 
                 if len(batch) >= BATCH_SIZE:
                     with self.state_lock:
                         self.candidate_fns.update(batch)
-                        batch = []
+                        batch = set()
 
             if batch:
                 with self.state_lock:
@@ -642,10 +644,6 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
                 break
             # if it's a git dir and we're in it, display relative paths; otherwise, stick to absolute
             display_fn = os.path.relpath(abs_fn) if curr_fns.git_root_dir is not None and os.getcwd().startswith(curr_fns.git_root_dir) else abs_fn
-
-            # ignore "."
-            if display_fn == ".":
-                continue
 
             if not display_fn.endswith("/") and os.path.isdir(display_fn):
                 display_fn += "/"
