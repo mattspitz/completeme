@@ -188,7 +188,7 @@ class FilenameCollectionThread(threading.Thread):
         with self.state_lock:
             self.git_root_dir = git_root_dir
 
-        def append_batched_filenames(cmd, base_dir=None, shell=False, add_dirnames=False, append_trailing_slash=False):
+        def append_batched_filenames(cmd, base_dir=None, shell=False, add_dirnames=False):
             """ Adds all the files from the output of this command to our candidate_fns in batches. """
             BATCH_SIZE = 100
 
@@ -213,16 +213,13 @@ class FilenameCollectionThread(threading.Thread):
                 if not fn:
                     continue
 
-                display_fn = os.path.abspath(fn)
-                if append_trailing_slash and not display_fn.endswith("/"):
-                    batch.append(display_fn + "/")
-                else:
-                    batch.append(display_fn)
+                abs_fn = os.path.abspath(fn)
+                batch.append(abs_fn)
 
                 if add_dirnames:
-                    dirname = os.path.dirname(display_fn)
-                    if dirname not in ("", "/"):
-                        batch.append(dirname + "/")
+                    dirname = os.path.dirname(abs_fn)
+                    if dirname != "/":
+                        batch.append(dirname)
 
                 if len(batch) >= BATCH_SIZE:
                     with self.state_lock:
@@ -256,7 +253,7 @@ class FilenameCollectionThread(threading.Thread):
                 find_cmd += ["-not", "-name", ".*"]
 
             if get_config("include_directories"):
-                append_batched_filenames(find_cmd + ["-type", "d"], append_trailing_slash=True)
+                append_batched_filenames(find_cmd + ["-type", "d"])
             append_batched_filenames(find_cmd + ["-type", "f"])
 
     def update_input_str(self, input_str):
@@ -452,17 +449,18 @@ class SearchThread(threading.Thread):
         def is_incremental_search():
             return self.new_candidate_fns is not None
 
-        def get_num_dirs_in_path(fn):
+        def get_num_dirs_in_path(abs_fn):
             count = 0
-            initial_val, last_val = fn, None
-            while fn:
-                head, _ = os.path.split(fn)
+            rel_fn = os.path.relpath(abs_fn)
+            initial_val, last_val = rel_fn, None
+            while rel_fn:
+                head, _ = os.path.split(rel_fn)
                 if head in ("", "/"):
                     break
                 count += 1
-                fn = head
-                if fn == last_val: raise Exception("Hit infinite loop while computing dirs for {}!".format(initial_val))
-                last_val = fn
+                rel_fn = head
+                if rel_fn == last_val: raise Exception("Hit infinite loop while computing dirs for {}!".format(initial_val))
+                last_val = rel_fn
             return count
 
         def perform_search():
@@ -612,9 +610,23 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
         # input line
         add_line(INPUT_Y, 0, input_str, curses.A_UNDERLINE, fill_line=True)
 
-        for pos, fn in enumerate(eligible_fns.eligible[:max_files_to_show]):
-            attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if pos == highlighted_pos else curses.A_NORMAL
-            add_line(FN_OFFSET + pos, 0, fn, attr)
+        screen_pos = 0
+        for abs_fn in eligible_fns.eligible:
+            if screen_pos >= max_files_to_show:
+                break
+            # if it's a git dir and we're in it, display relative paths; otherwise, stick to absolute
+            display_fn = os.path.relpath(abs_fn) if curr_fns.git_root_dir is not None and os.getcwd().startswith(curr_fns.git_root_dir) else abs_fn
+
+            # ignore "."
+            if display_fn == ".":
+                continue
+
+            if not display_fn.endswith("/") and os.path.isdir(display_fn):
+                display_fn += "/"
+
+            attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if screen_pos == highlighted_pos else curses.A_NORMAL
+            add_line(FN_OFFSET + screen_pos, 0, display_fn, attr)
+            screen_pos += 1
 
         screen.refresh()
 
