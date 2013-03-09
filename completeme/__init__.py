@@ -499,8 +499,9 @@ class SearchThread(threading.Thread):
 
                 assert (filter_regex is not None and ranking_regex is not None) or (filter_regex is None and ranking_regex is None)
 
-                for abs_fn in initial_filenames:
-                    if self._interrupted(): # TODO only do this in batches(?)
+                LOCK_BATCH_SIZE = 100
+                for idx, abs_fn in enumerate(initial_filenames):
+                    if idx % LOCK_BATCH_SIZE == 0 and self._interrupted():
                         raise ComputationInterruptedException("Searching interrupted!")
 
                     assert abs_fn.startswith(self.current_search_dir)
