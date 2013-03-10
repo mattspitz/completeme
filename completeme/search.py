@@ -16,7 +16,7 @@ EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "s
 class SearchThread(threading.Thread):
     NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "candidate_fns", "candidate_computation_complete" ])
     IncrementalInput = collections.namedtuple("IncrementalInput", [ "new_candidate_fns", "candidate_computation_complete" ])
-    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path", "is_dir" ])
+    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path" ])
 
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
@@ -166,7 +166,6 @@ class SearchThread(threading.Thread):
         """
 
         # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
-
         # (more nonempty groups -> show up later in the list)
         diff = match_one.num_nonempty_groups - match_two.num_nonempty_groups
         if diff != 0:
@@ -177,18 +176,13 @@ class SearchThread(threading.Thread):
         if diff != 0:
             return diff
 
-        # prefer non-directories
-        diff = match_one.is_dir - match_two.is_dir
-        if diff != 0:
-            return diff
-
-        # prefer shorter paths
-        diff = match_one.num_dirs_in_path - match_two.num_dirs_in_path
-        if diff != 0:
-            return diff
+        if match_one.num_dirs_in_path == 0 and match_two.num_dirs_in_path > 0:
+            return -1
+        elif match_two.num_dirs_in_path == 0 and match_one.num_dirs_in_path > 0:
+            return 1
 
         # and finally in lexicographical order
-        return cmp(match_one.match_str, match_two.match_str)
+        return cmp(match_one.match_str.lower(), match_two.match_str.lower())
 
     def _compute_eligible_filenames(self):
         """ Return a sorted ordering of the filenames based on this input string.
@@ -271,8 +265,7 @@ class SearchThread(threading.Thread):
                             match_str=trimmed_fn,
                             num_nonempty_groups = len(negs),
                             total_group_length=len("".join(negs)),
-                            num_dirs_in_path=get_num_dirs_in_path(trimmed_fn),
-                            is_dir=os.path.isdir(abs_fn)
+                            num_dirs_in_path=get_num_dirs_in_path(trimmed_fn)
                             )
             if lowered == "":
                 _logger.debug("Returning all candidates for empty input str.")
