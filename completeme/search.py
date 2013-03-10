@@ -16,7 +16,7 @@ EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "s
 class SearchThread(threading.Thread):
     NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "candidate_fns", "candidate_computation_complete" ])
     IncrementalInput = collections.namedtuple("IncrementalInput", [ "new_candidate_fns", "candidate_computation_complete" ])
-    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path", "is_child_of_cwd", "is_dir" ])
+    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path", "is_dir" ])
 
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
@@ -144,8 +144,6 @@ class SearchThread(threading.Thread):
         first, obviously, best match (num_nonempty_groups, total_group_length)
 
         then...
-        prefer children of the cwd (is_child_of_cwd = True)
-
         prefer files in this directory (num_dirs_in_path==0)
 
         prefer all directories in this directory, followed by their filenames (recursively)
@@ -176,11 +174,6 @@ class SearchThread(threading.Thread):
 
         # then the shortest total length of all groups (prefer "MyGreatFile.txt" over "My Documents/stuff/File.txt")
         diff = match_one.total_group_length - match_two.total_group_length
-        if diff != 0:
-            return diff
-
-        # prefer files in this directory before files elsewhere
-        diff = match_two.is_child_of_cwd - match_one.is_child_of_cwd
         if diff != 0:
             return diff
 
@@ -231,9 +224,6 @@ class SearchThread(threading.Thread):
                 last_val = fn
             return count
 
-        def is_child_of_cwd(abs_fn):
-            return not os.path.relpath(abs_fn).startswith("..")
-
         def perform_search():
             if cache_key in self.eligible_matchtuples_cache:
                 _logger.debug("Found cached eligible_matchtuples key: {}".format(cache_key))
@@ -282,7 +272,6 @@ class SearchThread(threading.Thread):
                             num_nonempty_groups = len(negs),
                             total_group_length=len("".join(negs)),
                             num_dirs_in_path=get_num_dirs_in_path(trimmed_fn),
-                            is_child_of_cwd=is_child_of_cwd(abs_fn),
                             is_dir=os.path.isdir(abs_fn)
                             )
             if lowered == "":
