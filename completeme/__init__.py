@@ -80,7 +80,9 @@ def split_search_dir_and_query(input_str, git_root_dir=None):
     if git_root_dir is not None and get_config("git_entire_tree"):
         # if we're searching the whole git directory anyway, don't treat this as a new search!
         git_abs_path = os.path.abspath(git_root_dir)
-        return git_abs_path, query
+        if abs_path.startswith(git_abs_path):
+            remaindir = abs_path[(len(git_abs_path) + 1):] # include the slash that follows the directory!
+            return git_abs_path, os.path.join(remaindir, query)
     return abs_path, query
 
 HIGHLIGHT_COLOR_PAIR = 1
