@@ -16,7 +16,7 @@ EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "s
 class SearchThread(threading.Thread):
     NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "candidate_fns", "candidate_computation_complete" ])
     IncrementalInput = collections.namedtuple("IncrementalInput", [ "new_candidate_fns", "candidate_computation_complete" ])
-    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path", "is_child_of_cwd", "is_dir" ])
+    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path" ])
 
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
@@ -144,8 +144,6 @@ class SearchThread(threading.Thread):
         first, obviously, best match (num_nonempty_groups, total_group_length)
 
         then...
-        prefer children of the cwd (is_child_of_cwd = True)
-
         prefer files in this directory (num_dirs_in_path==0)
 
         prefer all directories in this directory, followed by their filenames (recursively)
@@ -168,7 +166,6 @@ class SearchThread(threading.Thread):
         """
 
         # prefer the fewest number of empty groups (fewest gaps in fuzzy matching)
-
         # (more nonempty groups -> show up later in the list)
         diff = match_one.num_nonempty_groups - match_two.num_nonempty_groups
         if diff != 0:
@@ -179,23 +176,13 @@ class SearchThread(threading.Thread):
         if diff != 0:
             return diff
 
-        # prefer files in this directory before files elsewhere
-        diff = match_two.is_child_of_cwd - match_one.is_child_of_cwd
-        if diff != 0:
-            return diff
-
-        # prefer non-directories
-        diff = match_one.is_dir - match_two.is_dir
-        if diff != 0:
-            return diff
-
-        # prefer shorter paths
-        diff = match_one.num_dirs_in_path - match_two.num_dirs_in_path
-        if diff != 0:
-            return diff
+        if match_one.num_dirs_in_path == 0 and match_two.num_dirs_in_path > 0:
+            return -1
+        elif match_two.num_dirs_in_path == 0 and match_one.num_dirs_in_path > 0:
+            return 1
 
         # and finally in lexicographical order
-        return cmp(match_one.match_str, match_two.match_str)
+        return cmp(match_one.match_str.lower(), match_two.match_str.lower())
 
     def _compute_eligible_filenames(self):
         """ Return a sorted ordering of the filenames based on this input string.
@@ -230,9 +217,6 @@ class SearchThread(threading.Thread):
                 if fn == last_val: raise Exception("Hit infinite loop while computing dirs for {}!".format(initial_val))
                 last_val = fn
             return count
-
-        def is_child_of_cwd(abs_fn):
-            return not os.path.relpath(abs_fn).startswith("..")
 
         def perform_search():
             if cache_key in self.eligible_matchtuples_cache:
@@ -281,9 +265,7 @@ class SearchThread(threading.Thread):
                             match_str=trimmed_fn,
                             num_nonempty_groups = len(negs),
                             total_group_length=len("".join(negs)),
-                            num_dirs_in_path=get_num_dirs_in_path(trimmed_fn),
-                            is_child_of_cwd=is_child_of_cwd(abs_fn),
-                            is_dir=os.path.isdir(abs_fn)
+                            num_dirs_in_path=get_num_dirs_in_path(trimmed_fn)
                             )
             if lowered == "":
                 _logger.debug("Returning all candidates for empty input str.")
