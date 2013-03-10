@@ -248,10 +248,10 @@ class FilenameCollectionThread(threading.Thread):
 
         elif self.git_root_dir is not None:
             # return all files in this git tree
-            for base_dir, shell_cmd in (
-                    (self.git_root_dir, "git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else "")),
-                    (None, "git ls-files --exclude-standard --others")):
-                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=base_dir, shell=True, add_dirnames=get_config("include_directories"))
+            for shell_cmd in (
+                    "git ls-tree {}-r HEAD".format("--full-tree " if get_config("git_entire_tree") else ""),
+                    "git ls-files --exclude-standard --others"):
+                append_batched_filenames("cd {} && {} | cut -f2".format(self.current_search_dir, shell_cmd), base_dir=self.git_root_dir, shell=True, add_dirnames=get_config("include_directories"))
 
         else:
             # return all files in the current_search_dir
@@ -663,22 +663,27 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
             search_status.reset_status()
 
         # add status bar
-        status_text = "{}{:d} of {:d} candidate filenames{}".format(
+        status_text = "{}{:d} of {:d} candidate filenames ({})".format(
                 search_status_prefix,
                 len(eligible_fns.eligible),
                 len(curr_fns.candidates),
-                " (git: {})".format(curr_fns.git_root_dir) if curr_fns.git_root_dir is not None else "")
+                "git: {}".format(curr_fns.git_root_dir) if curr_fns.git_root_dir is not None else curr_fns.current_search_dir)
         add_line(STATUS_BAR_Y, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
 
         # input line
         add_line(INPUT_Y, 0, input_str, curses.A_UNDERLINE, fill_line=True)
 
         screen_pos = 0
+        cwd = os.getcwd()
         for abs_fn in eligible_fns.eligible:
             if screen_pos >= max_files_to_show:
                 break
             # if it's a git dir and we're in it, display relative paths; otherwise, stick to absolute
-            display_fn = os.path.relpath(abs_fn) if curr_fns.git_root_dir is not None and os.getcwd().startswith(curr_fns.git_root_dir) else abs_fn
+            if (abs_fn.startswith(cwd)
+                    or (curr_fns.git_root_dir is not None and cwd.startswith(curr_fns.git_root_dir))):
+                display_fn = os.path.relpath(abs_fn)
+            else:
+                display_fn = abs_fn
 
             if not display_fn.endswith("/") and os.path.isdir(display_fn):
                 display_fn += "/"
