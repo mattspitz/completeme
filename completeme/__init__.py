@@ -658,6 +658,9 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
             if screen_pos >= max_files_to_show:
                 break
 
+            if abs_fn == curr_fns.current_search_dir:
+                continue
+
             if (curr_fns.current_search_dir.startswith(cwd)
                     or (curr_fns.git_root_dir is not None and cwd.startswith(curr_fns.git_root_dir))):
                 display_fn = os.path.relpath(abs_fn)
