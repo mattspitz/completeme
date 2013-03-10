@@ -1,6 +1,7 @@
 import curses
 import logging
 import os
+import re
 import time
 
 from .collection import FilenameCollectionThread
@@ -41,7 +42,7 @@ class SearchStatus(object):
         self.curr_idx = (self.curr_idx + 1) % len(self.SEARCH_STATUS_CHARS)
         return self.SEARCH_STATUS_CHARS[self.curr_idx]
 
-def select_filename(screen, fn_collection_thread, search_thread, input_str):
+def select_filename(screen, fn_collection_thread, search_thread, input_str, shell_helper):
     highlighted_pos = 0
     key_name = None
 
@@ -154,11 +155,11 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
 
         if key_name == NEWLINE:
             # open the file in $EDITOR
-            open_file(highlighted_fn)
+            shell_helper.open_file(highlighted_fn)
             return
         elif key_name == TAB:
             # dump the character back to the prompt
-            dump_to_prompt(highlighted_fn)
+            shell_helper.dump_to_prompt(highlighted_fn)
             return
 
         elif key_name == "KEY_DOWN":
@@ -186,39 +187,67 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
     # something's definitely not right
     raise Exception("Should be unreachable.  Exit this function within the loop!")
 
-def _shellquote(s):
-    """ Cleans up a filename for the shell (from http://stackoverflow.com/a/35857) """
-    return "'" + s.replace("'", "'\\''") + "'"
+class ShellHelper(object):
+    OUTPUT_SH = "/tmp/completeme.sh"
+    def __init__(self):
+        super(ShellHelper, self).__init__()
+        self.line = os.environ.get("READLINE_LINE", "")
+        self.point = int(os.environ.get("READLINE_POINT", 0))
 
-OUTPUT_SH = "/tmp/completeme.sh"
-def dump_to_prompt(fn):
-    if fn:
-        with open(OUTPUT_SH, 'wb') as f:
-            new_token = _shellquote(_shellquote(fn) + " ") # double shell-quote because we're setting an environment variable with the quoted string
-            print >> f, "READLINE_LINE='{}'{}".format(os.environ.get("READLINE_LINE", ""), new_token),
-            print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(new_token))
+        # populated by get_initial_input_str
+        self.line_prefix = ""
+        self.line_suffix = ""
 
-def open_file(fn):
-    if fn:
-        editor_cmd = os.getenv("EDITOR")
-        if editor_cmd is None:
-            raise Exception("Environment variable $EDITOR is missing!")
+    @staticmethod
+    def _shellquote(s):
+        """ Cleans up a filename for the shell (from http://stackoverflow.com/a/35857) """
+        return "'" + s.replace("'", "'\\''") + "'"
 
-        with open(OUTPUT_SH, "wb") as f:
-            cmd = "{} {}".format(editor_cmd, _shellquote(fn))
-            print >> f, cmd
-            print >> f, "history -s \"{}\"".format(cmd)
+    def dump_to_prompt(self, fn):
+        if fn:
+            with open(self.OUTPUT_SH, 'wb') as f:
+                new_token = self._shellquote(self._shellquote(fn) + " ") # double shell-quote because we're setting an environment variable with the quoted string
+                print >> f, "READLINE_LINE='{}'{}'{}'".format(self.line_prefix, new_token, self.line_suffix),
+                print >> f, "READLINE_POINT='{:d}'".format(len(self.line_prefix) + len(new_token))
+                with open("/tmp/gah", "wb") as f:
+                    print >> f, "prefix: |{}|".format(self.line_prefix)
+                    print >> f, "newtok: |{}|".format(new_token)
+                    print >> f, "suffix: |{}|".format(self.line_suffix)
 
-def get_initial_input_str():
-    """ Returns the string that should seed our search.
+    @classmethod
+    def open_file(cls, fn):
+        if fn:
+            editor_cmd = os.getenv("EDITOR")
+            if editor_cmd is None:
+                raise Exception("Environment variable $EDITOR is missing!")
 
-    TODO parse the existing commandline (READLINE_LINE, READLINE_POINT).
-    If we're in the middle of typing something, seed with that argument.
-    """
-    return ""
+            with open(cls.OUTPUT_SH, "wb") as f:
+                cmd = "{} {}".format(editor_cmd, cls._shellquote(fn))
+                print >> f, cmd
+                print >> f, "history -s \"{}\"".format(cmd)
+
+    def get_initial_input_str(self):
+        """ Returns the string that should seed our search.
+
+        TODO if we auto-insert something into the text field and exit with "Tab", we should REPLACE the file that was there before
+        """
+        line = os.environ.get("READLINE_LINE", "")
+        point = int(os.environ.get("READLINE_POINT", 0))
+        if (point > 0
+                and (point - 1) < len(line)):
+            # go find the last word that is preceded by non-escaped whitespace
+            split = re.split(r"((?<=[^\\])\s)", line[:point])
+
+            self.line_prefix = "".join(split[:-1])  # everything up to this point as our prefix
+            self.line_suffix = line[point:]         # the rest of the string that we'll need to append
+
+            # strip out the escaped characters (all \ that aren't followed by another \)
+            return re.sub(r"\\(?!\\)", "", split[-1])
+        return ""
 
 def run_loop():
-    initial_input_str = get_initial_input_str()
+    shell_helper = ShellHelper()
+    initial_input_str = shell_helper.get_initial_input_str()
     fn_collection_thread = FilenameCollectionThread(initial_input_str)
     fn_collection_thread.start()
 
@@ -230,7 +259,7 @@ def run_loop():
 
     try:
         screen = init_screen()
-        select_filename(screen, fn_collection_thread, search_thread, initial_input_str)
+        select_filename(screen, fn_collection_thread, search_thread, initial_input_str, shell_helper)
     except KeyboardInterrupt:
         pass
     finally:
