@@ -2,9 +2,9 @@
 completeme
 ##########
 
-completeme is a python script that'll allow you to auto-complete filenames and launch them in an editor, much like GitHub's 't' keyboard shortcut.  Rather than tab-completing to oblivion (ever worked on a Java project?), just start typing the name of the file, and when you hit 'enter', it'll open that file in your favorite $EDITOR.  If you hit 'tab', the filename will be entered back into the command line.
+completeme is a python script to auto-complete filenames in a given directory, much like Github's 't' keyboard shortcut or Command-T in TextMate or SublimeText.  When you've settled on the file you'd like to edit, press "Enter" to open it with whatever's in your $EDITOR variable or press "Tab" to drop that filename at the end of your current command!
 
-Uses files stored in the current GitHub repository and falls back on all files below the current working directory.
+To change your search directory, simply prefix your query.  That is, start your string with "../" to search your current working directory's parent or "/tmp/" to search "/tmp/".  Note that the trailing slash is what triggers the directory change. If your current search directory is a git repository, this will respect your .gitignore.
 
 **Make sure to add `source /usr/local/bin/setup_completeme_key_binding.sh` to your .bashrc to enable Ctrl+t support!**
 
@@ -14,7 +14,7 @@ Configuration
 
 completeme comes with (wherever-pip-installs-the-completeme-python-package)/completeme.json, which you can use to, well, configure your completeme experience.
 
-* *include_directories* (defualt=true) indicates whether we should also display directories (not just files).
+* *include_directories* (default=true) indicates whether we should also display directories (not just files).
 * *find_hidden_directories* (default=false) indicates whether we should search inside dot directories (assuming we didn't find a git repository).  These are things like .config/, .vim/, etc.
 * *find_hidden_files* (default=false) indicates whether we should find files that start with a dot (assuming we didn't find a git repository).  These are things like .emacs, .xinitrc, .DS_Store, etc.
 
