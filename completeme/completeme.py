@@ -41,6 +41,14 @@ class SearchStatus(object):
         self.curr_idx = (self.curr_idx + 1) % len(self.SEARCH_STATUS_CHARS)
         return self.SEARCH_STATUS_CHARS[self.curr_idx]
 
+def _common_suffix(path_one, path_two):
+    def rstr(s):
+        return "".join(reversed(s))
+
+    rpath_one, rpath_two = rstr(path_one), rstr(path_two)
+    rprefix = os.path.commonprefix((rpath_one, rpath_two))
+    return rstr(rprefix)
+
 def select_filename(screen, fn_collection_thread, search_thread, input_str):
     highlighted_pos = 0
     key_name = None
@@ -82,12 +90,32 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
         max_height, max_width = screen.getmaxyx()
         max_files_to_show = min(len(eligible_fns.eligible), max_height - FN_OFFSET)
 
-        def add_line(y, x, line, attr, fill_line=False):
+        def add_line(y, x, line, attr, fill_line=False, bold_positions=None):
             s = line[-(max_width - 1):]
             if fill_line:
                 s = s.ljust(max_width - 1, " ")
             try:
-                screen.addstr(y, x, s, attr)
+                if bold_positions is None:
+                    screen.addstr(y, x, s, attr)
+                else:
+                    cur_x = x
+                    str_pos = 0
+                    for bold_pos in bold_positions:
+                        # draw the string up to this point
+                        no_bold = s[str_pos:bold_pos]
+                        screen.addstr(y, cur_x, no_bold, attr)
+                        cur_x += len(no_bold)
+                        str_pos += len(no_bold)
+
+                        # draw the bold character
+                        bold = s[bold_pos]
+                        screen.addstr(y, cur_x, bold, attr | curses.A_BOLD)
+                        cur_x += 1
+                        str_pos += 1
+
+                    # clean up the rest
+                    screen.addstr(y, cur_x, s[str_pos:], attr)
+
             except Exception:
                 _logger.debug("Couldn't add string to screen: {}".format(s))
 
@@ -110,24 +138,30 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
 
         screen_pos = 0
         cwd = os.getcwd()
-        for abs_fn in eligible_fns.eligible:
+        for eligible_fn in eligible_fns.eligible:
             if screen_pos >= max_files_to_show:
                 break
 
-            if abs_fn == curr_fns.current_search_dir:
+            if eligible_fn.abs_fn == curr_fns.current_search_dir:
                 continue
 
             if (curr_fns.current_search_dir.startswith(cwd)
                     or (curr_fns.git_root_dir is not None and cwd.startswith(curr_fns.git_root_dir))):
-                display_fn = os.path.relpath(abs_fn)
+                display_fn = os.path.relpath(eligible_fn.abs_fn)
+                # recompute our match positions
+                common_suffix = _common_suffix(display_fn, eligible_fn.abs_fn)
+                abs_prefix = eligible_fn.abs_fn[:-len(common_suffix)]
+                display_prefix = display_fn[:-len(common_suffix)]
+                match_positions = [ pos - len(abs_prefix) + len(display_prefix) for pos in eligible_fn.abs_match_positions ]
             else:
-                display_fn = abs_fn
+                display_fn = eligible_fn.abs_fn
+                match_positions = eligible_fn.abs_match_positions
 
             if not display_fn.endswith("/") and os.path.isdir(display_fn):
                 display_fn += "/"
 
             attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if screen_pos == highlighted_pos else curses.A_NORMAL
-            add_line(FN_OFFSET + screen_pos, 0, display_fn, attr)
+            add_line(FN_OFFSET + screen_pos, 0, display_fn, attr, bold_positions=match_positions)
             screen_pos += 1
 
         screen.refresh()
