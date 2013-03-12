@@ -12,11 +12,12 @@ from .utils import split_search_dir_and_query
 
 _logger = logging.getLogger(__name__)
 
+EligibleFile = collections.namedtuple("EligibleFile", [ "abs_fn", "abs_match_positions" ])
 EligibleFilenames = collections.namedtuple("EligibleFilenames", [ "eligible", "search_complete" ])
 class SearchThread(threading.Thread):
     NewInput = collections.namedtuple("NewInput", [ "input_str", "current_search_dir", "candidate_fns", "candidate_computation_complete" ])
     IncrementalInput = collections.namedtuple("IncrementalInput", [ "new_candidate_fns", "candidate_computation_complete" ])
-    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "num_nonempty_groups", "total_group_length", "num_dirs_in_path" ])
+    MatchTuple = collections.namedtuple("MatchTuple", ["abs_fn", "match_str", "abs_match_positions", "num_nonempty_groups", "total_group_length", "num_dirs_in_path" ])
 
     def __init__(self, initial_input_str, initial_current_filenames):
         super(SearchThread, self).__init__()
@@ -133,7 +134,7 @@ class SearchThread(threading.Thread):
     def get_eligible_filenames(self):
         """ Retrieve a current snapshot of what we think are the current eligible filenames. """
         with self.state_lock:
-            eligible_fns = [ match.abs_fn for match in self.eligible_matchtuples ]
+            eligible_fns = [ EligibleFile(abs_fn=match.abs_fn, abs_match_positions=match.abs_match_positions) for match in self.eligible_matchtuples ]
             search_complete = self.search_complete
 
         return EligibleFilenames(eligible=eligible_fns, search_complete=search_complete)
@@ -237,9 +238,6 @@ class SearchThread(threading.Thread):
             _logger.debug("Searching {:d} files for '{}'{}".format(len(initial_filenames), lowered, " (incremental!)" if is_incremental_search() else ""))
 
             def get_match_tuples_it(filter_regex=None, ranking_regex=None):
-                def nonempty_groups(match):
-                    return filter(lambda x: x, match.groups())
-
                 assert (filter_regex is not None and ranking_regex is not None) or (filter_regex is None and ranking_regex is None)
 
                 LOCK_BATCH_SIZE = 100
@@ -256,15 +254,26 @@ class SearchThread(threading.Thread):
                         if filter_match is None:
                             continue
                         ranking_match = ranking_regex.search(trimmed_fn)
-                        negs = nonempty_groups(ranking_match)
+                        nonempty_groups = []
+                        match_positions = []
+                        cur_abs_pos = len(self.current_search_dir) # position relative to the absolute file (ranking match peels off the current_search_dir!)
+                        for idx, group in enumerate(ranking_match.groups()):
+                            if idx > 0 and group: # skip the group that starts the file when calculating nonempty groups
+                                nonempty_groups.append(group)
+
+                            cur_abs_pos += len(group)           # skip the group
+                            match_positions.append(cur_abs_pos) # add the matched character
+                            cur_abs_pos += 1                    # consume the character
                     else:
-                        negs = []
+                        nonempty_groups = []
+                        match_positions = []
 
                     yield self.MatchTuple(
                             abs_fn=abs_fn,
                             match_str=trimmed_fn,
-                            num_nonempty_groups = len(negs),
-                            total_group_length=len("".join(negs)),
+                            abs_match_positions=match_positions,
+                            num_nonempty_groups = len(nonempty_groups),
+                            total_group_length=len("".join(nonempty_groups)),
                             num_dirs_in_path=get_num_dirs_in_path(trimmed_fn)
                             )
             if lowered == "":
@@ -276,7 +285,7 @@ class SearchThread(threading.Thread):
                 regex_str = "(.*?)".join( re.escape(ch) for ch in lowered )
                 filter_regex = re.compile(regex_str, re.IGNORECASE | re.DOTALL)
                 # prepend (?:.*) to push off the matching as much as possible (more expensive but more accurate)
-                ranking_regex = re.compile("(?:.*)" + regex_str, re.IGNORECASE | re.DOTALL)
+                ranking_regex = re.compile("(.*)" + regex_str, re.IGNORECASE | re.DOTALL)
 
                 return list(get_match_tuples_it(filter_regex=filter_regex, ranking_regex=ranking_regex))
 
