@@ -136,15 +136,8 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
         # input line
         add_line(INPUT_Y, 0, input_str, curses.A_UNDERLINE, fill_line=True)
 
-        screen_pos = 0
         cwd = os.getcwd()
-        for eligible_fn in eligible_fns.eligible:
-            if screen_pos >= max_files_to_show:
-                break
-
-            if eligible_fn.abs_fn == curr_fns.current_search_dir:
-                continue
-
+        def get_display_fn_match_positions(eligible_fn):
             if (curr_fns.current_search_dir.startswith(cwd)
                     or (curr_fns.git_root_dir is not None and cwd.startswith(curr_fns.git_root_dir))):
                 display_fn = os.path.relpath(eligible_fn.abs_fn)
@@ -159,6 +152,18 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
 
             if not display_fn.endswith("/") and os.path.isdir(display_fn):
                 display_fn += "/"
+
+            return display_fn, match_positions
+
+        screen_pos = 0
+        for eligible_fn in eligible_fns.eligible:
+            if screen_pos >= max_files_to_show:
+                break
+
+            if eligible_fn.abs_fn == curr_fns.current_search_dir:
+                continue
+
+            display_fn, match_positions = get_display_fn_match_positions(eligible_fn)
 
             attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if screen_pos == highlighted_pos else curses.A_NORMAL
             add_line(FN_OFFSET + screen_pos, 0, display_fn, attr, bold_positions=match_positions)
@@ -188,11 +193,13 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
 
         if key_name == NEWLINE:
             # open the file in $EDITOR
-            open_file(highlighted_fn)
+            display_fn, _ = get_display_fn_match_positions(highlighted_fn)
+            open_file(display_fn)
             return
         elif key_name == TAB:
             # dump the character back to the prompt
-            dump_to_prompt(highlighted_fn)
+            display_fn, _ = get_display_fn_match_positions(highlighted_fn)
+            dump_to_prompt(display_fn)
             return
 
         elif key_name == "KEY_DOWN":
