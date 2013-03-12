@@ -3,19 +3,22 @@ import random
 import time
 import unittest
 
-import completeme
+from completeme.collection import CurrentFilenames
+from completeme.search import SearchThread
 
 class UserInputRegexTest(unittest.TestCase):
 
     def compute_eligible_filenames(self, input_str, candidates):
         """ Helper for spinning up a thread and waiting for results. """
 
-        bg_thread = completeme.SearchThread(
+        cwd = os.path.abspath(".")
+        # prepend cwd
+        bg_thread = SearchThread(
                 input_str,
-                completeme.CurrentFilenames(
-                    candidates=candidates,
+                CurrentFilenames(
+                    candidates=map(lambda x: os.path.join(cwd, x), candidates),
                     candidate_computation_complete=True,
-                    current_search_dir=os.path.abspath("."),
+                    current_search_dir=cwd,
                     git_root_dir=None)
                 )
         bg_thread.start()
@@ -28,7 +31,9 @@ class UserInputRegexTest(unittest.TestCase):
                     raise Exception("This should have taken way less than two seconds...")
                 time.sleep(0.01)
                 continue
-            return eligible_fns.eligible
+
+            # take off our prepended path
+            return [ os.path.relpath(eligible_fn.abs_fn) for eligible_fn in eligible_fns.eligible ]
 
     def test_regexy_characters(self):
         """ Ensures that even if the user inputs things like . and * and ? that we won't explode. """
