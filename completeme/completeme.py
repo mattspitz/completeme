@@ -82,8 +82,6 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
         if not eligible_fns.search_complete:
             highlighted_pos = 0
 
-        highlighted_fn = eligible_fns.eligible[highlighted_pos] if eligible_fns.eligible else None
-
         STATUS_BAR_Y = 0      # status bar first!
         INPUT_Y = 2           # where the input line should go
         FN_OFFSET = 3         # first Y coordinate of a filename
@@ -155,6 +153,7 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
 
             return display_fn, match_positions
 
+        highlighted_fn = None
         screen_pos = 0
         for eligible_fn in eligible_fns.eligible:
             if screen_pos >= max_files_to_show:
@@ -164,8 +163,12 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
                 continue
 
             display_fn, match_positions = get_display_fn_match_positions(eligible_fn)
+            if screen_pos == highlighted_pos:
+                attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR)
+                highlighted_fn = display_fn
+            else:
+                attr = curses.A_NORMAL
 
-            attr = curses.color_pair(HIGHLIGHT_COLOR_PAIR) if screen_pos == highlighted_pos else curses.A_NORMAL
             add_line(FN_OFFSET + screen_pos, 0, display_fn, attr, bold_positions=match_positions)
             screen_pos += 1
 
@@ -193,13 +196,11 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
 
         if key_name == NEWLINE:
             # open the file in $EDITOR
-            display_fn, _ = get_display_fn_match_positions(highlighted_fn)
-            open_file(display_fn)
+            open_file(highlighted_fn)
             return
         elif key_name == TAB:
             # dump the character back to the prompt
-            display_fn, _ = get_display_fn_match_positions(highlighted_fn)
-            dump_to_prompt(display_fn)
+            dump_to_prompt(highlighted_fn)
             return
 
         elif key_name == "KEY_DOWN":
