@@ -81,12 +81,15 @@ class FilenameCollectionThread(threading.Thread):
             self.ex_traceback = traceback.format_exc()
             raise
 
+    @staticmethod
+    def _get_shell_output(cmd):
+        # don't use check_output because it won't swallow stderr
+        return subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
+
     def _compute_candidates(self):
         """ The actual meat of computing the candidate filenames. """
         try:
-            # don't use check_output because it won't swallow stdout
-            git_root_dir = subprocess.Popen("cd {} && git rev-parse --show-toplevel".format(self.current_search_dir),
-                        shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0].strip() or None
+            git_root_dir = self._get_shell_output("cd {} && git rev-parse --show-toplevel".format(self.current_search_dir)).strip() or None
         except subprocess.CalledProcessError:
             git_root_dir = None
 
@@ -146,10 +149,23 @@ class FilenameCollectionThread(threading.Thread):
 
         elif self.git_root_dir is not None:
             # return files that git recognizes
-            for shell_cmd in (
-                    "git ls-tree --name-only -r HEAD",
-                    "git ls-files --exclude-standard --others"):
-                append_batched_filenames("cd {} && {}".format(self.current_search_dir, shell_cmd), base_dir=self.current_search_dir, shell=True, add_dirnames=get_config("include_directories"))
+
+            # start with this current search directory
+            search_dirs = [ self.current_search_dir ]
+
+            # add all subdirectories (which are rooted at git_root_dir)
+            # ...note that we can't just split on " " because the first character is either a space or a -
+            for submodule in self._get_shell_output("cd {} && git submodule status --recursive | cut -b43- | cut --delim=' ' -f1".format(self.git_root_dir)).split():
+                _logger.debug("Found submodule: {}".format(submodule))
+                submodule_root = os.path.join(self.git_root_dir, submodule)
+                if submodule_root.startswith(self.current_search_dir):
+                    search_dirs.append(submodule_root)
+
+            for search_dir in search_dirs:
+                for shell_cmd in (
+                        "git ls-tree --name-only -r HEAD",
+                        "git ls-files --exclude-standard --others"):
+                    append_batched_filenames("cd {} && {}".format(search_dir, shell_cmd), base_dir=search_dir, shell=True, add_dirnames=get_config("include_directories"))
 
         else:
             # return all files in the current_search_dir
