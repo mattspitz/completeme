@@ -88,31 +88,36 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
         max_height, max_width = screen.getmaxyx()
         max_files_to_show = min(len(eligible_fns.eligible), max_height - FN_OFFSET)
 
+        def addstr(y, x, s, attr):
+            if s:
+                _logger.debug("adding string '{}'".format(s))
+                screen.addstr(y, x, s, attr)
+
         def add_line(y, x, line, attr, fill_line=False, bold_positions=None):
             s = line[-(max_width - 1):]
             if fill_line:
                 s = s.ljust(max_width - 1, " ")
             try:
                 if bold_positions is None:
-                    screen.addstr(y, x, s, attr)
+                    addstr(y, x, s, attr)
                 else:
                     cur_x = x
                     str_pos = 0
                     for bold_pos in bold_positions:
                         # draw the string up to this point
                         no_bold = s[str_pos:bold_pos]
-                        screen.addstr(y, cur_x, no_bold, attr)
+                        addstr(y, cur_x, no_bold, attr)
                         cur_x += len(no_bold)
                         str_pos += len(no_bold)
 
                         # draw the bold character
                         bold = s[bold_pos]
-                        screen.addstr(y, cur_x, bold, attr | curses.A_BOLD)
+                        addstr(y, cur_x, bold, attr | curses.A_BOLD)
                         cur_x += 1
                         str_pos += 1
 
                     # clean up the rest
-                    screen.addstr(y, cur_x, s[str_pos:], attr)
+                    addstr(y, cur_x, s[str_pos:], attr)
 
             except Exception:
                 _logger.debug("Couldn't add string to screen: {}".format(s))
