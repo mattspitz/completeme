@@ -49,7 +49,7 @@ def _common_suffix(path_one, path_two):
     rprefix = os.path.commonprefix((rpath_one, rpath_two))
     return rstr(rprefix)
 
-def select_filename(screen, fn_collection_thread, search_thread, input_str):
+def select_filename(screen, fn_collection_thread, search_thread, input_str, output_script):
     highlighted_pos = 0
     key_name = None
 
@@ -201,11 +201,11 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str):
 
         if key_name == NEWLINE:
             # open the file in $EDITOR
-            open_file(highlighted_fn)
+            open_file(highlighted_fn, output_script)
             return
         elif key_name == TAB:
             # dump the character back to the prompt
-            dump_to_prompt(highlighted_fn)
+            dump_to_prompt(highlighted_fn, output_script)
             return
 
         elif key_name == "KEY_DOWN":
@@ -237,21 +237,20 @@ def _shellquote(s):
     """ Cleans up a filename for the shell (from http://stackoverflow.com/a/35857) """
     return "'" + s.replace("'", "'\\''") + "'"
 
-OUTPUT_SH = "/tmp/completeme.sh"
-def dump_to_prompt(fn):
+def dump_to_prompt(fn, output_script):
     if fn:
-        with open(OUTPUT_SH, 'wb') as f:
+        with open(output_script, 'wb') as f:
             new_token = _shellquote(_shellquote(fn) + " ") # double shell-quote because we're setting an environment variable with the quoted string
             print >> f, "READLINE_LINE='{}'{}".format(os.environ.get("READLINE_LINE", ""), new_token),
             print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(new_token))
 
-def open_file(fn):
+def open_file(fn, output_script):
     if fn:
         editor_cmd = os.getenv("EDITOR")
         if editor_cmd is None:
             raise Exception("Environment variable $EDITOR is missing!")
 
-        with open(OUTPUT_SH, "wb") as f:
+        with open(output_script, "wb") as f:
             cmd = "{} {}".format(editor_cmd, _shellquote(fn))
             print >> f, cmd
             print >> f, "history -s \"{}\"".format(cmd)
@@ -265,6 +264,13 @@ def get_initial_input_str():
     return ""
 
 def run_loop():
+    import sys
+    if len(sys.argv) == 2:
+        output_script = sys.argv[1]
+    else:
+        print >> sys.stderr, "usage: completeme output-script-file"
+        raise SystemExit()
+
     initial_input_str = get_initial_input_str()
     fn_collection_thread = FilenameCollectionThread(initial_input_str)
     fn_collection_thread.start()
@@ -277,7 +283,7 @@ def run_loop():
 
     try:
         screen = init_screen()
-        select_filename(screen, fn_collection_thread, search_thread, initial_input_str)
+        select_filename(screen, fn_collection_thread, search_thread, initial_input_str, output_script)
     except KeyboardInterrupt:
         pass
     finally:
