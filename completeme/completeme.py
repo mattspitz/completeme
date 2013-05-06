@@ -3,6 +3,8 @@ import logging
 import os
 import time
 
+from contextlib import contextmanager
+
 from .collection import FilenameCollectionThread
 from .search import SearchThread
 
@@ -48,6 +50,12 @@ def _common_suffix(path_one, path_two):
     rpath_one, rpath_two = rstr(path_one), rstr(path_two)
     rprefix = os.path.commonprefix((rpath_one, rpath_two))
     return rstr(rprefix)
+
+@contextmanager
+def umask(newmask):
+    oldmask = os.umask(newmask)
+    yield
+    os.umask(oldmask)
 
 def select_filename(screen, fn_collection_thread, search_thread, input_str, output_script):
     highlighted_pos = 0
@@ -239,7 +247,7 @@ def _shellquote(s):
 
 def dump_to_prompt(fn, output_script):
     if fn:
-        with open(output_script, 'wb') as f:
+        with umask(0077), open(output_script, 'wb') as f:
             new_token = _shellquote(_shellquote(fn) + " ") # double shell-quote because we're setting an environment variable with the quoted string
             print >> f, "READLINE_LINE='{}'{}".format(os.environ.get("READLINE_LINE", ""), new_token),
             print >> f, "READLINE_POINT='{}'".format(int(os.environ.get("READLINE_POINT", 0)) + len(new_token))
@@ -250,7 +258,7 @@ def open_file(fn, output_script):
         if editor_cmd is None:
             raise Exception("Environment variable $EDITOR is missing!")
 
-        with open(output_script, "wb") as f:
+        with umask(0077), open(output_script, "wb") as f:
             cmd = "{} {}".format(editor_cmd, _shellquote(fn))
             print >> f, cmd
             print >> f, "history -s \"{}\"".format(cmd)
