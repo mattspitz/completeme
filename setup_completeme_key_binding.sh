@@ -1,1 +1,1 @@
-bind -x '"\C-t": TMPFILE=`mktemp` && env completeme $TMPFILE && test -e /tmp/completeme.sh && source $TMPFILE; rm -f $TMPFILE'
+bind -x '"\C-t": TMPFILE=`mktemp` && env completeme $TMPFILE && test -e $TMPFILE && source $TMPFILE; rm -f $TMPFILE'
