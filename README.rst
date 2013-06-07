@@ -6,9 +6,19 @@ completeme
 TL;DR
 #####
 
+**Linux**:
 - $ sudo pip install completeme
 - $ echo "source \`which setup_completeme_key_binding.sh\`" >> ~/.bashrc
 - $ source ~/.bashrc
+
+**OS X**:
+- $ sudo brew install bash # see note below about OS X and bash 4
+- $ sudo pip install completeme
+- $ echo "source \`which setup_completeme_key_binding.sh\`" >> ~/.profile
+- $ source ~/.profile
+
+**Windows**:
+- http://bit.ly/1bdcxmt
 
 ###########
 Description
