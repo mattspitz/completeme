@@ -7,7 +7,7 @@ TL;DR
 #####
 
 - $ sudo pip install completeme
-- $ echo "source `which setup_completeme_key_binding.sh`" >> ~/.bashrc
+- $ echo "source ``which setup_completeme_key_binding.sh``" >> ~/.bashrc
 - $ source ~/.bashrc
 
 ###########
