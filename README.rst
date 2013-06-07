@@ -2,6 +2,18 @@
 completeme
 ##########
 
+#####
+TL;DR
+#####
+
+- $ sudo pip install completeme
+- $ echo "source /usr/local/bin/setup_completeme_key_binding.sh" >> ~/.bashrc
+- $ source ~/.bashrc
+
+###########
+Description
+###########
+
 completeme is a python script to auto-complete filenames in a given directory, much like Github's 't' keyboard shortcut or Command-T in TextMate or SublimeText.  When you've settled on the file you'd like to edit, press "Enter" to open it with whatever's in your $EDITOR variable or press "Tab" to drop that filename at the end of your current command!
 
 To change your search directory, simply prefix your query.  That is, start your string with "../" to search your current working directory's parent or "/tmp/" to search "/tmp/".  Note that the trailing slash is what triggers the directory change. If your current search directory is a git repository, this will respect your .gitignore.
