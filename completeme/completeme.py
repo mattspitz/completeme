@@ -295,7 +295,13 @@ def run_loop():
     except KeyboardInterrupt:
         pass
     finally:
+        fn_collection_thread.stop()
+        search_thread.stop()
+
         cleanup_curses()
+
+        search_thread.join()
+        fn_collection_thread.join()
 
 def main():
     logging.basicConfig(level=logging.DEBUG if os.environ.get("DEBUG") else logging.ERROR,

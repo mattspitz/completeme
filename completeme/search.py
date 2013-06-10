@@ -26,6 +26,7 @@ class SearchThread(threading.Thread):
 
         self.input_queue = Queue.Queue()
         self.state_lock = threading.Lock()
+        self.should_stop = False
 
         self.input_str = None
         self.current_search_dir = None
@@ -45,11 +46,17 @@ class SearchThread(threading.Thread):
         return self.ex_traceback
 
     def _interrupted(self):
-        return not self.input_queue.empty()
+        return self.should_stop or not self.input_queue.empty()
+
+    def stop(self):
+        self.should_stop = True
 
     def run(self):
         try:
             while True:
+                if self.should_stop:
+                    return
+
                 if self.input_queue.empty():
                     # don't hold our state_lock until we have a queued item available
                     time.sleep(0.005)

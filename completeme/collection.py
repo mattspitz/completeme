@@ -20,6 +20,7 @@ class FilenameCollectionThread(threading.Thread):
         self.daemon = True
         self.ex_traceback = None
 
+        self.should_stop = False
         self.search_dir_queue = Queue.Queue()
         self.state_lock = threading.Lock()            # for updating shared state
 
@@ -36,7 +37,10 @@ class FilenameCollectionThread(threading.Thread):
         return self.ex_traceback
 
     def _interrupted(self):
-        return not self.search_dir_queue.empty()
+        return self.should_stop or not self.search_dir_queue.empty()
+
+    def stop(self):
+        self.should_stop = True
 
     def state_is_consistent(self):
         """ Returns true if the state of this thread is consistent enough to trust the results.  That is, the filenames returned and the metadata (git_root_dir) are in sync. """
@@ -46,6 +50,9 @@ class FilenameCollectionThread(threading.Thread):
     def run(self):
         try:
             while True:
+                if self.should_stop:
+                    return
+
                 if self.search_dir_queue.empty():
                     # don't hold the state lock until we have a queued search_dir available
                     time.sleep(0.005)
