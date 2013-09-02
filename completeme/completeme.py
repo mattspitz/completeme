@@ -17,8 +17,9 @@ TAB = "^I"
 def init_screen():
     screen = curses.initscr()
     curses.start_color()
+    curses.use_default_colors()
     curses.init_pair(HIGHLIGHT_COLOR_PAIR, curses.COLOR_RED, curses.COLOR_WHITE)
-    curses.init_pair(STATUS_BAR_COLOR_PAIR, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(STATUS_BAR_COLOR_PAIR, curses.COLOR_GREEN, -1)
     screen.keypad(1)
     screen.nodelay(1) # nonblocking input
     return screen
