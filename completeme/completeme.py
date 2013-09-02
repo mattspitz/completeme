@@ -143,7 +143,7 @@ def select_filename(screen, fn_collection_thread, search_thread, input_str, outp
                 len(eligible_fns.eligible),
                 len(curr_fns.candidates),
                 "{}{}".format(curr_fns.current_search_dir, " (git)" if curr_fns.git_root_dir is not None else ""))
-        add_line(STATUS_BAR_Y, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR), fill_line=True)
+        add_line(STATUS_BAR_Y, 0, status_text, curses.color_pair(STATUS_BAR_COLOR_PAIR) | curses.A_BOLD, fill_line=True)
 
         # input line
         add_line(INPUT_Y, 0, input_str, curses.A_UNDERLINE, fill_line=True)
