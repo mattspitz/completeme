@@ -170,7 +170,7 @@ class FilenameCollectionThread(threading.Thread):
 
             for search_dir in search_dirs:
                 for shell_cmd in (
-                        "git ls-tree --name-only -r HEAD",
+                        "git ls-files --cached",
                         "git ls-files --exclude-standard --others"):
                     append_batched_filenames("cd {} && {}".format(search_dir, shell_cmd), base_dir=search_dir, shell=True, add_dirnames=get_config("include_directories"))
 
