@@ -14,8 +14,8 @@ TL;DR
 
 **OS X**:
 
-- $ sudo brew install bash # see note below about OS X and bash 4
-- $ sudo pip install completeme
+- $ brew install bash # see note below about OS X and bash 4
+- $ sudo pip install completeme # no need for 'sudo' if you installed python with brew, as well!
 - $ echo "source \`which setup_completeme_key_binding.sh\`" >> ~/.profile
 - $ source ~/.profile
 
