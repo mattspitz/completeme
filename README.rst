@@ -47,7 +47,11 @@ completeme comes with (wherever-pip-installs-the-completeme-python-package)/comp
 Known Issues
 ############
 
-* Mac OS X ships with bash 3.2, which doesn't use the READLINE_LINE or READLINE_POINT variables.  Unless you upgrade, you won't be able to use the tab-functionality to drop the filename back into the prompt!  Fortunately, `brew install bash` will give you a compatible version!
+Mac OS X ships with bash 3.2, which doesn't use the READLINE_LINE or READLINE_POINT variables.  Unless you upgrade, you won't be able to use the tab-functionality to drop the filename back into the prompt!  To upgrade:
+
+- `brew install bash`
+- Add `/usr/local/bin/bash` to `/etc/shells`
+- `chsh -s /usr/local/bin/bash`
 
 #######
 License
