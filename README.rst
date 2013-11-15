@@ -67,3 +67,4 @@ Thank you to all who have contributed ideas and feedback.  Special thanks to tho
 * Mark Steve Samson (`@marksteve <https://github.com/marksteve>`_)
 * Harold Cooper (`@hrldcpr <https://github.com/hrldcpr>`_)
 * Andrew Gwozdziewycz (`@apgwoz <https://github.com/apgwoz>`_)
+* Benjamin Gleitzman (`@gleitz <https://github.com/gleitz>`_)
